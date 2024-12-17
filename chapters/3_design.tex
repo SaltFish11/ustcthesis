@@ -8,7 +8,7 @@
 Top-k 算法显得尤为重要。尽管在国产AI处理器架构上已经实现了基于冒泡排序的实现，
 但是当数据规模较大的时候，其性能仍然存在一定的不足。
 因此本文结合国产 AI 处理器的异构计算特点，
-根据radix-select算法和quick-select算法，设计了Top-k算子。
+根据radix-select算法设计了Top-k算子。
 具体而言，首先概述了Top-K算法在异构架构下的计算流程。随后，
 深入探讨了主机端（CPU）在数据预处理阶段的职责与关键操作。
 最后，针对国产 AI 处理器的硬件设计，
@@ -67,7 +67,7 @@ Top-k 查询算法通常依赖于单线程或少量线程的处理，效率较�
 
 
 
-\section{主机端数据准备}
+\section{主机端任务分析}
     \subsection{接口设计及参数检查}
     拟设计实现的 Top-k 算子输入参数要求如表\ref{tab:input_tab}所示，其中，
     input参数表示输入的张量（tensor），其往往含有多个维度。根据所使用的数据类型，输入张量的元素值可以为整数或浮动小数，
@@ -117,270 +117,61 @@ Top-k 查询算法通常依赖于单线程或少量线程的处理，效率较�
           \bottomrule
         \end{tabular}
     \end{table}
-    
 
-    \subsection{运行参数配置}
-
-        \paragraph{radix-select任务类型}
-            需注意的是，radix-selct设备端的并行方案需要多次启动kernel函数，并且需要多核协同完成任务，
-            因此每次发起的kernel的任务类型为UnionX。而具体需要多少个core，则根据当前的数据规模来计算得到。
-            
-
-
-        \paragraph{quick-select任务类型}
-            quick-select的kernel函数的任务类型为UnionX，X的具体值根据输入数据的大小来进行确定。
-
-    \subsection{数据预处理及后处理}
-
-
-
-\section{设备端Top-k算法实现}
+    \subsection{数据处理}
+    %数据的预处理和后处理，阐述数据从多维tensor转换为2维tensor
+    %以及调用transpose的必要性
     \subsection{设备端数据摆布方式分析}
 
 
-Top - K需要支持多维度数据，可以表示如下：\(\text{dim0}\)，\(\text{dim1}\)，\(\text{dim2}\)，
-\(\text{dim3}\)。由左到右表示维度从高到低，按照\(\text{dim}\)可以将四个维度转化为：
-\(\text{left}\)，\(\text{dim}\)，\(\text{right}\)，\(\text{left}\)为最高维度，
-\(\text{dim}\)为中间维度。当\(\text{dim} = 3\)时表示对\(\text{dim3}\)维度进行Top - K查询
-，此时\(\text{right} = 1\)，\(\text{left} = \text{dim0}×\text{dim1}×\text{dim2}\)。
-当\(\text{dim} = 0\)时，表示对\(\text{dim0}\)求Top - K，则对应的\(\text{left}\)和
-\(\text{right}\)分别为：\(1\)，\(\text{dim1}×\text{dim2}×\text{dim3}\)。
-
-综上所述可以将任意维度的数据抽象成一个三维张量，
-其形状为\(\text{left}\)，\(\text{dim}\)，\(\text{right}\)，其中，\(\text{dim}\)是
-待操作维度。但是当\(\text{right}≠1\)时，待
-操作维度不在最低维，这意味进行数据I/O时，将有可能浪费有限的带宽。因此，在
-这种情况下需要针对数据后面两个维度进行转置（transpose）操作。此时张量的形
-状为（\(\text{left}\)，\(\text{right}\)，\(\text{dim}\)），进一步的
-，对于Top - k算子而言，其输入的形状可以抽象为（\(\text{left\_right}\)，\(\text{dim}\)），
-其中\(\text{left\_right}=\text{left}×\text{right}\)。当Top - k任务完成之后，输出的形
-状将为（\(\text{left\_right}\)，\(\text{k}\)），此时需要对结果再次进行转置操作，其输出形状
-为（\(\text{left}\)，\(\text{k}\)，\(\text{right}\)），
-作为最终Top - k算子的最终结果。其形状的转变流程如图~\ref{fig:input_shape}
-
-\begin{figure}[ht]
-    \centering
-    \includegraphics[scale = 0.4]{input_shape.png}
-    \caption{}
-    \label{fig:input_shape}
-    % \note{注：图注的内容不宜放到图题中。}
-\end{figure}
-
-
-
-    \subsection{quick-select 分析及实现}
-    并行选择算法的核心目标是找到输入数组\(A = [a_{1}, a_{2},\cdots, a_{n}]\)中的第\(k\)大或第\(k\)小元素。该问题通过构造子数组\(L\)和\(R\)并递归地缩小问题规模来求解。
-    为了更好的说明整个算法流程，我们首先考虑取Top-k小这一问题，其算法的伪代码如算法~\ref{alg:quick_select}所示。
+    Top - K需要支持多维度数据，可以表示如下：\(\text{dim0}\)，\(\text{dim1}\)，\(\text{dim2}\)，
+    \(\text{dim3}\)。由左到右表示维度从高到低，按照\(\text{dim}\)可以将四个维度转化为：
+    \(\text{left}\)，\(\text{dim}\)，\(\text{right}\)，\(\text{left}\)为最高维度，
+    \(\text{dim}\)为中间维度。当\(\text{dim} = 3\)时表示对\(\text{dim3}\)维度进行Top - K查询
+    ，此时\(\text{right} = 1\)，\(\text{left} = \text{dim0}×\text{dim1}×\text{dim2}\)。
+    当\(\text{dim} = 0\)时，表示对\(\text{dim0}\)求Top - K，则对应的\(\text{left}\)和
+    \(\text{right}\)分别为：\(1\)，\(\text{dim1}×\text{dim2}×\text{dim3}\)。
+    
+    综上所述可以将任意维度的数据抽象成一个三维张量，
+    其形状为\(\text{left}\)，\(\text{dim}\)，\(\text{right}\)，其中，\(\text{dim}\)是
+    待操作维度。但是当\(\text{right}≠1\)时，待
+    操作维度不在最低维，这意味进行数据I/O时，将有可能浪费有限的带宽。因此，在
+    这种情况下需要针对数据后面两个维度进行转置（transpose）操作。此时张量的形
+    状为（\(\text{left}\)，\(\text{right}\)，\(\text{dim}\)），进一步的
+    ，对于Top - k算子而言，其输入的形状可以抽象为（\(\text{left\_right}\)，\(\text{dim}\)），
+    其中\(\text{left\_right}=\text{left}×\text{right}\)。当Top - k任务完成之后，输出的形
+    状将为（\(\text{left\_right}\)，\(\text{k}\)），此时需要对结果再次进行转置操作，其输出形状
+    为（\(\text{left}\)，\(\text{k}\)，\(\text{right}\)），
+    作为最终Top - k算子的最终结果。其形状的转变流程如图~\ref{fig:input_shape}
+    
+    \begin{figure}[ht]
+        \centering
+        \includegraphics[scale = 0.4]{input_shape.png}
+        \caption{}
+        \label{fig:input_shape}
+        % \note{注：图注的内容不宜放到图题中。}
+    \end{figure}
     
     
-    \begin{algorithm}
-        \SetAlgoLined
-        \KwIn{Array $A$ with $n$ entries, integer $k \leq n$}
-        \KwOut{Value of the $k$th largest element in $A$}
-        $p \leftarrow$ a value selected uniformly at random from $A$ \tcp{This is our pivot.}
-        $L \leftarrow$ elements in $A$ which are less than pivot $p$ \tcp{Requires $\Theta(n)$ work}
-        $R \leftarrow$ elements in $A$ which are larger than pivot $p$\\
-        \If{$|L|$ is $k - 1$}{
-            \Return $p$ \tcp{The pivot itself is the $k$th largest element}
-        }
-        \If{$|L| > k$}{
-            \Return \textproc{Select($L$, $k$)} \tcp{$k$th largest element lives in $L$}
-        }
-        \Else{
-            \Return \textproc{Select($R$, $k - |L| - 1$)} \tcp{$k$th largest element lives in $R$}
-        }
-        \caption{Select(A, k)}
-        \label{alg:quick_select}
-    \end{algorithm}
-
-    其算法流程描述如下：
-
-    \begin{itemize}
-        \item \textbf{选择枢轴：}  
-        算法从输入数组 $A$ 中随机选择一个枢轴 $p$。该过程可以视为划分操作的起点。
-        
-        \item \textbf{划分数组：}  
-        根据枢轴 $p$，将数组 $A$ 分为两个子数组：
-        \begin{itemize}
-            \item $L$：存储小于 $p$ 的元素；
-            \item $R$：存储大于或等于 $p$ 的元素。
-        \end{itemize}
-        划分操作的计算复杂度为 $O(n)$，其中每次递归需要处理的数组规模依次减小，从而逐步缩小问题规模。
+    \subsection{核函数选取及配置}
+    %阐述根据不同规模的输入对kernel函数选取的重要性。
+    %阐述各个kernel函数的任务规模配置。
+        \paragraph{radix-select任务类型}
+            需注意的是，radix-selct设备端的并行方案需要多次启动kernel函数，并且需要多核协同完成任务，
+            因此每次发起的kernel的任务类型为UnionX。而具体需要多少个core，则根据当前的数据规模来计算得到。
     
-        \item \textbf{递归求解：}  
-        \begin{itemize}
-            \item 如果 $k$ 恰好对应 $p$ 的位置，直接返回 $p$；
-            \item 如果 $k$ 小于子数组 $L$ 的大小，则递归处理 $L$；
-            \item 否则，递归处理 $R$，并更新 $k$ 的值以反映当前查找范围的变化。
-        \end{itemize}
- 
-    \end{itemize}
 
 
 
+
+\section{Top-k并行算法设计及实现}
     
-    
-    
-    在并行选择算法中，数组划分（Partitioning）是关键步骤，其性能对整体算法的效率有显著影响。划分操作的目标是依据选定的枢轴（pivot），将输入数组\(A = [a_{1}, a_{2},\cdots, a_{n}]\)分为两个子集：
-
-\(L = \{x \mid x < pivot\}\)，即所有小于枢轴的元素集合。
-
-\(R = \{x \mid x \geq pivot\}\)，即所有大于或等于枢轴的元素集合。
-
-在传统的串行实现中，划分操作通过逐一扫描数组完成，其时间复杂度为\(O(n)\)。
-然而，这种方法在并行环境中难以充分利用多处理器的计算资源。
-为此，本文通过引入前缀和（PrefixSum）技术，对划分操作进行并行化优化。
-算法伪代码如算法~\ref{alg:Construct}：
-
-\begin{algorithm}
-    \SetAlgoLined
-    Allocate and empty array of size $n$, with all values initially 0.\;
-    Construct indicator list $B_L[0,\ldots,n - 1]$, where $b_i = 1\{a_i < p\}$\;
-    Compute PrefixSum on $B_L$ %\tcp{This requires $O(\log n)$ depth}
-    Create the array $L$ of size $\text{PrefixSum}(B_L)[n - 1]$ \;
-    \For{$i = 1,2,\ldots,n$}{
-      $L[\text{PrefixSum}(B_L)[i]] \leftarrow a_i$ \tcp{Can be done in parallel}
-    }
-    \caption{ Constructing $L$ (or $R$)}
-    \label{alg:Construct}
-  \end{algorithm}
-
-  \paragraph{步骤详解}
-
-1. 构建标记数组
-
-为了实现划分操作，首先对输入数组\(A\)构造一个标记数组\(B\)，其定义如下：
-\[
-B[i]=
-\begin{cases}
-1, & \text{若 } a_{i}<pivot\\
-0, & \text{若 } a_{i}\geq pivot
-\end{cases}
-\]
-
-标记数组\(B\)的每个元素表示输入数组\(A\)中对应位置的元素是否属于\(L\)。构建\(B\)的过程可以在并行环境中高效完成，因为每个处理器只需独立判断若干元素的条件。
-例如，给定输入数组\(A = [3,7,2,5,6]\)，若枢轴为\(pivot = 5\)，则标记数组\(B=[1,0,1,0,0]\)。
-
-2. 计算前缀和（cumsum）
-
-在获得标记数组\(B\)后，计算其前缀和数组\(P\)，定义如下：
-\[
-P[i]=\sum_{j = 1}^{i}B[j]
-\]
-
-其中\(P[i]\)表示在标记数组\(B\)中从第\(1\)个到第\(i\)个元素中值为\(1\)的元素个数。前缀和计算可以使用并行扫描（Parallel Scan）技术完成，其时间复杂度为\(O(\log n)\)。
-继续以上示例，对\(B = [1,0,1,0,0]\)计算前缀和：
-\[
-P=[1,1,2,2,2]
-\]
-
-3. 确定目标位置
-
-通过前缀和数组\(P\)，可以快速确定每个元素在目标数组\(L\)或\(R\)中的位置：
-\begin{itemize}
-    \item 若\(B[i] = 1\)（即\(a_{i}<pivot\)），则\(a_{i}\)属于\(L\)，其在\(L\)中的位置为\(P[i] - 1\)。
-    \item 若\(B[i] = 0\)（即\(a_{i}\geq pivot\)），则\(a_{i}\)属于\(R\)，其位置可以通过全局计数和前缀和计算确定。
-\end{itemize}
-
-4. 构造$L$（$R$）（scatter）
-
- 根据前缀和数组\(P\)，将A中的元素赋值到$L$（$R$）指定位置，此操作为一个Scatter操作，可以并行执行。
-继续以上示例：
-\begin{itemize}
-    \item 元素\(3\)（\(B[1]=1\)）在\(L\)中的位置为\(P[1] - 1 = 0\)；
-    \item 元素\(7\)（\(B[2]=0\)）在\(R\)中的位置为\(\vert L\vert+\text{当前}(R\text{的偏移量})\)。
-\end{itemize}
 
 
-
-
-\paragraph{并行实现}
-
-
-在并行实现中，主要工作流程分为以下几步：
-\begin{enumerate}
-    \item 对于二维Tensor数据，将数据按照行进行切分，每个Cluster负责数据的若干行，
-    而后每个Cluster对所分配的行依次处理。
-    \item 对于Cluster正在处理的某一行数据而言，采用多核进行计算。因此需要将整行数据平均分到各个处理器上，并且在算法开始之初选择好privot，供各个处理器使用。
-    \item 在单核上，由于片上空间有限，因此需要将局部数据进一步划分成repeat段，循环依次load到片上进行操作。
-    \item 根据局部前缀和数组\(P\)，每个处理器同时将所负责的元素从输入数组\(A\)复制到目标数组\(L\)或\(R\)。
-\end{enumerate}
-\subparagraph{选择pivot}
-在快速选择算法中，枢轴选择策略至关重要。
-
-\textbf{固定位置选择策略}:包含多种形式。主要如下：
-
-\begin{itemize}
-    \item 首元素作枢轴：虽实现简便，却在数组有序或近有序时，因划分极度不平衡，致使时间复杂度退化为\(O(n^{2})\)。
-    \item 尾元素作枢轴：亦有相同弊端。
-    \item 中间元素作枢轴：虽能一定程度缓解，但特殊分布下仍可能划分不均。
-\end{itemize}
-
-\textbf{随机选择策略}：每次划分前随机选枢轴，能降低有序数据时最坏情况概率，
-可随机因素使极端情形仍可能出现，且随机函数调用增加时间开销。
-
-\textbf{三数取中策略}：选取首、中、尾元素的中位数作枢轴，兼具简单性与适应性，
-多数情况可保障划分均衡，维持平均时间复杂度\(O(n)\)，对有序或部分有序数组性能亦佳。
-
-\textbf{样本取中策略}：从大规模数据中抽取小样本计算中位数作枢轴，在平衡枢轴计算开销与划分质量上表现优异，能减少最坏情况概率，适应多样数据分布，适用于大数据排序场景。
-
-结合位置选择策略的利弊，在本实现中采用三数取中策略。首先让Core0根据输入长度从片外内存选取首、中、尾元素的中位数作枢轴，计算完毕后放回片外内存。
-然后Cluster上的各个处理器从指定片外内存加载Privot进行后续流程。
-\subparagraph{构建L（R）}
-
-
-对于构建L和R，目前有两种实现方案：
-
-1.计算好所需的B数组后，多次调用cumsum和scatter的kernel构建L和R。
-此种方案的优点是较为方便实现，但是在性能上可能存在一些不足。因为它需要多次与片外内存进行IO，
-另外在构建L和R时还需要分别调用。
-最差情况下，若一组数有n个，找top1的数，可能需要循环n次，调用2n次cumsum和2n次scatetr。
-意味着需要与片外内存进行4n次I/O。
-
-2.求取L和R时，意在求得当前input中小于p的部分放于L，大于p的部分放于R，
-故可以直接使用filter指令将数据筛出放在片上（L\_local），
-而后再根据各个处理器的offset将L\_local和R\_local放回到片外内存，再直接将L（R）作为下一轮的输入。
-此种方案实现较为复杂，但是I/O优势明显，最坏情况下仅仅需要与片上内存进行2n次I/O。
-由于方案2在性能上存在明显的优势，因此采用方案2。
-
-具体的实现见下方：
-
-1、首先对整个数组进行第一次遍历，将一行数据平均分到各个处理器中，此时各个处理器
-利用 \text{bang\_lt\_scalar} 和 \text{bang\_lt\_not} 向量化指令处理其局部数据，生成局部 \(B\)（\(B\_\text{local}\)）。
-利用 \text{bang\_count\_mask} 计算出 \(B\_\text{local}\) 中的有效的个数 \(\text{count\_local}\)，其结果决定了多处理器的结果在片外内存
-上的 \(\text{offset}\)，计算完成后将其放回到片外内存的相应位置，供各处理器使用。
-
-2、对整个数组进行第二次遍历，保证与第一次遍历时的数据拆分相同，
-再次利用 \text{bang\_lt\_scalar} 和 \text{bang\_lt\_not} 向量化指令生成局部 \(B\)（\(B\_\text{local}\)），
-而后使用 \text{bang\_count\_mask} 计算出当前有效数据的个数，其结果作为处理器内循环在片外显存的 \(\text{offset}\)。
-
-3.遍历结束，可在片外内存上得到连续的L和R，作为下一次Select的输入。
-
-
-
-
-\paragraph{数据类型分析}
-对于quick-select而言，归属为比较型算法，即：在进行选择的过程当中需要元素之间进行
-两两比较，若是比当前元素小就放入L数组中，反之则放入R数组中。因此，对于不同的数据类型，
-只要底层的向量指令支持该数据类型（如int，float32），即可进行实现。
-目前在实现过程中主要使用到了bang\_lt\_scalar和bang\_filter向量指令，其对主要数据类型（int32，float32）
-都已支持。因此在具体的算法实现时，不需要因数据类型而过多考虑。
-
-
-\paragraph{Top-k大/小的分析}
-获取Top-k大或者Top-k小是Top-k算子所具备的基本流程，其主要根据接口参数largest来进行判断。
-在具体的实现过程中，我们需要针对这一参数作一些调整。
-回顾前文的算法流程分析环节，L中主要存放着小于privot值的元素，
-R中主要存放着不大于当前privot值的元素。
-对于获取Top-k小的元素，算法主要通过L，k，l\_total\_count来不断的进行递归求解。
-而对于获取Top-k大的元素，我们仅仅需要改变递归过程中的目标数组即可，即不断的递归更新R，r\_total\_count和k。
-其余过程均与“获取Top-k小元素”这一问题保持一致。
-
-
-\subsection{radix-select 分析及实现}
+\subsection{单核radix-select 分析及实现}
 基数选择（radix-select）是基数排序的一种应用，用于在一组数据中找到具有特定排名的元素。
-类比于 Quicksort 中的 Quickselect，RadixSelect 算法过程与基数排序算法相似，
-与之不同的是，其在迭代的过程中，RadixSelect仅对包含第 k 大元素的数进行基数排序，达到减少问题规模的效果。
+其算法过程与基数排序算法相似，
+但与之不同的是，其在迭代的过程中，RadixSelect仅对包含第 k 大元素的数进行基数排序，达到减少问题规模的效果。
 在radix-select top - \(K\)算法中，一个数位（digit）对应着一个元素二进制表示中
 的一组连续的\(b\)位。该算法从最高有效数位（most significant digit）到最低有效
 数位（least significant digit）处理一个元素，每次迭代处理一个数位。
@@ -451,12 +242,34 @@ R中主要存放着不大于当前privot值的元素。
   在此阶段，会再次遍历数组\(D\)，目的是将数组\(D\)中的前\(k\)大元素挑选出来，
   并放入结果数组\(R\)中。
 
-  上述串行算法由于在所有阶段都存在循环依赖关系，所以不能直接并行化（或向量化）。
-  如果试图对"构建直方图"（HISTOGRAM - KEYS）的迭代进行并行处理，可能会有多个处理器同时尝试
-  对同一个桶（bucket）进行递增操作，产生资源竞争。而如果锁定桶，当有许多键具有相同数位时，
-  桶将成为串行瓶颈，将会极大地降低性能。
 
-  基于以上的分析，可以通过为每个处理器分配一组独立的桶（本地桶），
+
+
+  \subsection{多核radix-select 设计及实现}
+  国产 AI 处理器具备多核心架构且支持并行运算，在处理维度为\((A,B)\)的输入数据时，算法的并行度显著受制于\(A\)与\(B\)的维度特性。
+  于特定情境下，当\(A\)取值较小（低于\(10\)）而\(B\)取值较大（超出\(100\)万）时，单核处理方式会引发严峻的负载均衡困境。具体表现为：其一，凭借\(A\)维度所构建的并行度匮乏，致使部分核心处于闲置状态，无法充分发挥其计算效能；其二，由于\(B\)的规模庞大，被分配任务的核心将持续处于工作负载之下，难以实现高效的资源分配与利用。
+  鉴于上述挑战，本研究精心设计并成功实现了适用于多核处理的 radix - select Top - k 算子。该算子旨在通过多核协同机制，有效缓解因维度不均衡所导致的负载失衡问题，充分挖掘国产 AI 处理器多核心架构的并行计算潜力。
+  此外，参数\(k\)的取值规模与算子的具体实现策略紧密关联。当\(k\)较大（例如超越片上内存 NRAM 的存储容量）时，不可避免地需将临时输出数据暂存于片外空间 GDR。然而，如前文所阐述，GDR 作为存储层级中带宽最低的部分，其数据传输速率严重制约程序的整体性能表现。
+  故而，本研究进一步依据\(k\)的不同取值范围，系统性地设计并实现了具有针对性的 Top - k 算子。
+  后续将对相关设计与实现细节予以详尽阐释。
+  
+  \paragraph{小k场景下的radix-select的并行设计及实现}
+  
+
+
+
+
+
+
+  \paragraph{大k场景下的radix-slect的并行设计及实现}
+  前面所介绍的各个实现方案，充分利用了“小k”场景下的一个重要特性——NRAM空间能够存放完整的临时输出。
+  而由于NRAM的空间十分有限，因此k的范围不能够太大，否则将会导致程序崩溃。
+  因此，此时考虑将临时输出存储在GDR空间上。
+  
+  回顾radix-select Top-k的串行算法，由于其所有阶段都存在循环依赖关系，所以不能直接进行并行化（或向量化）。
+  例如，如果试图对"构建直方图"（HISTOGRAM - KEYS）的迭代进行并行处理，可能会有多个处理器同时尝试
+  对同一个桶（bucket）进行递增操作，产生资源竞争。而如果锁定桶，当有许多键具有相同数位时，
+  桶将成为串行瓶颈，将会极大地降低性能。基于以上的分析，可以通过为每个处理器分配一组独立的桶（本地桶），
 进而在不需要对桶进行锁定的情况下实现算法并行化:
 即每个处理器负责其自己的局部数据（\(\frac{N}{P}\)子集），
 并将它们列入自己的本地桶集合中。
@@ -549,12 +362,12 @@ $Buckets[i][j]$代表在进行SCAN-BUCKETS处理后，$A$中元素最终在结�
 另外将等于digit\_num的数据筛选出来放到数组\(R\)中。
 
 
-\paragraph{基数选择对数据类型与数值正负性的适应性分析}
+\subsection{基数选择对数据类型与数值正负性的适应性分析}
 
 
 基数选择作为一种重要的排序类算法，其在不同数据类型以及数值正负性处理上具有特定的要求与表现，以下将对此展开深入探讨。
 
-\subparagraph{数据类型要求}
+\paragraph{数据类型要求}
 
 % 通过上面的分析可以得出两点一致性的结论，进而使得问题能够更加聚焦，即：
 % 1.对于整型和浮点型，虽然数据的存储方式不同，但其从0到30位（除符号位）对数字大小的重要性依次递增。
