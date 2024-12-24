@@ -210,7 +210,32 @@ Cache 中的一段指令序列顺序开始执行后， 经过分发和调度被�
 \end{figure}
 
 \subsection{Cluster级优化}
-MTP Cluster 架构如图~ref{}所示，MTP Cluster 由 4 个 MLU Core 和一个 Memory Core 组成，是 MTP 架构中的最小执行单元。每个 MLU Core 是具备完整计算、IO 和控制功能的处理器核心，可以独立完成一个计算任务，也可以与其他 MLU Core 协作完成一个计算任务。
+MTP Cluster 架构如图~\ref{fig:cluster_arch}所示，MTP Cluster 由 4 个 MLU Core 和一个 Memory Core 组成，
+是 MTP 架构中的最小执行单元。每个 MLU Core 是具备完整计算、IO 和控制功能的处理器核心，
+可以独立完成一个计算任务，也可以与其他 MLU Core 协作完成一个计算任务。
+而任务类型描述的是任务的硬件需求，任务规模描述的是任务的划分方式，而任务映射则建立了具体任务与物理硬件之间的映射关系。
+为了便于描述任务规模，在BANG C 编程语言中引入了cnrtDim3\_t 数据类型。
+其中，与任务规模相关的内置变量包括： taskDim 、 taskDimX 、 taskDimY 以及 taskDimZ。
+对于 UnionN 类型的任务，需要至少有 N 个 Cluster 空闲时才能下发任务。
+同时还要满足约束 taskDimX \% (N * coreDim) = 0 。最小的并行度为 clusterDim * coreDim 。
+在不考虑任务展开的情况下，迭代次数=taskDimZ * taskDimY * taskDimX / (N * coreDim) 。
+驱动根据当前硬件的实时利用率决定是否将任务展开，尽可能占满所有的硬件资源。
+例如：当任务类型为Union1, 任务规模为 {X=8, Y=1, Z=1} 时，默认情况下，
+该任务会在一个Cluster上经过两轮迭代才成完成。
+如果，驱动在下发任务时发现硬件至少有两个Cluster空闲，那么还会做任务展开，
+让Union1类型的任务同时占用2个Cluster，这样只需要一轮迭代即可完成。
+
+在定义Job类型为UnionX类型时，Job被调度的物理单元将会以X个Cluster为单位。通过前文的介绍，
+我们知道RadixSelect核函数的Job数量由A来确定，即每个Job处理输入的一行，因此将会有A个Job。
+具体的Job类型由B的大小来确定，或者说单个Job所占的硬件资源由B确定。
+
+因此，若是按照上述固定的规则
+但是当A的数量较少，B的数值很大时，将会出现某些MLU-Core不满足Job的构成规则而处于闲置的状态。
+例如，假如芯片上有24个Cluster（96个MLU-Core）, 并且此时的A数值为9，B数值同样很大（大于200w），此时Job类型将会被定义
+为Union4类型,即单个Job将会占据16个Cluster（64个MLU-Core），剩下的8个将会一直处于闲置状态，
+Cluster的利用率为75\%。而假若此时设定为Union3类型，则对于整个计算任务而言，Cluster的利用率为100\%。
+因此需要对此中计算规模进行优化。分析其根本原因，是Job的任务粒度太大导致的。因此将多核运行的Job类型分配确定为最高上限为
+Union3。
 
 \begin{figure}[ht]
     \centering
@@ -219,23 +244,35 @@ MTP Cluster 架构如图~ref{}所示，MTP Cluster 由 4 个 MLU Core 和一个 
     \label{fig:cluster_arch}
     % \note{注：图注的内容不宜放到图题中。}
 \end{figure}
+
+
 \subsection{芯片级优化}
 
-MLU 芯片由本地控制单元、本地存储单元以及一个或者多个 Cluster 构成的 计
-算单元组成。以 MLU300 系列板卡上的思元芯片为例，该芯片含有 6 个 Cluster，
- 而设计实现的 Top-k 算子使用一个 Cluster 处理一个计算任务。MLU 芯片支持多 
- 队列并行，这意味着可以实现多个任务队列并行地执行计算任务及其 IO 操作。RT 提供
- 了丰富且灵活的队列管理接口、异步 Kernel 执行接口和异步拷贝接口。 使用这些接口
- 可以实现硬件资源的高效利用，使得在输入图像数量较多的情况 下，可以充分利用 MLU 芯
- 片上的 Cluster 计算资源，并行地进行图像计算任务， 从而提升算子的并行处理性能。
-  实际实现上，首先读取输入待处理图像数量 n，然后用 n 除以 6，得到每个 任务队列至少
-  需要处理的输入图像数量 num\_per\_cluster。当 n 不能被 6 整除时， 将余下的待处理
-  输入图像从编号为 0 的队列开始，依次加入对应的队列当中，即 可得到各队列需要处理的
-  输入图像数量。再根据输入图像的大小，便可计算出每 个队列需要处理的输入图像数据大
-  小。接着使用 rtQueueCreate 接口创建好对应 的队列，再通过 rtMemcpyAsync 异步
+MLU 芯片支持多队列并行，这意味着可以实现多个任务队列并行地执行计算任务及设备端与主机端之间的IO操作。
+RT提供了丰富且灵活的队列管理接口、异步 Kernel 执行接口和异步拷贝接口。 使用这些接口
+ 可以实现硬件资源的高效利用，使得在输入的A维度较大的情况下，可以充分利用 MLU 芯
+ 片上的 Cluster 计算资源，并行地进行Top-k计算任务， 从而提升算子的并行处理性能。
+ 假设定义了6个队列，
+在实际实现上，首先读取输入，同样设输入规模为[A,B],然后用 A 除以 6，得到每个任务队列至少
+  需要处理的输入行数 num\_per\_queue。当 n 不能被 6 整除时， 将余下的待处理
+  行从编号为 0 的队列开始，依次加入对应的队列当中，即可得到各队列需要处理的数据。
+  接着使用 rtQueueCreate 接口创建好对应的队列，再通过 rtMemcpyAsync 异步
   数据迁移接口将各队列待处理的图像数据 从主机端迁移到设备端。数据迁移完成后即可启
-   Kernel 核函数进行 Top-k 描述 子的计算。最后再次调用 rtMemcpyAsync 异步数据
-   迁移接口将计算好的 Top-k 描 述子从设备端迁移到主机端即可。
+   Kernel 核函数进行 Top-k 算子的计算。最后再次调用 rtMemcpyAsync 异步数据
+   迁移接口将计算好的结果从设备端迁移到主机端即可。
+通过这样的操作，可以有效的将主机端与设备端之间的IO与计算相互掩盖。达到减少整个任务计算时间的效果，如图~\ref{fig:level}所示。
+\begin{figure}[ht]
+    \centering
+    \includegraphics[scale = 0.15]{level.jpg}
+    \caption{}
+    \label{fig:level}
+    % \note{注：图注的内容不宜放到图题中。}
+\end{figure}
+
+
+
+
+
 
 
 
