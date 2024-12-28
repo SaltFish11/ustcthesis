@@ -14,7 +14,7 @@
 测试的环境配置如表~\ref{tab:peizhi}所示。
 \begin{table}[h]
     \centering
-    \caption{表 5.1 硬件环境配置}
+    \caption{硬件环境配置}
     \begin{tabular}{|l|l|}
     \hline
     类型 & 配置信息 \\
@@ -46,9 +46,9 @@
 \subsection{测试流程}
 \begin{enumerate}
     \item 通过 RT 接口初始化设备,RT 包含设备管理、内存管理、任务队列管理、 设备端程序执行、通知管理等功能，使用 BC 编写的程序需要借助于 RT 提供的 接口才能运行在 MLU 设备上。
-    \item 初始化 HOG 描述符，并为保存 HOG 参数内容的结构体创建一个句柄。 同时计算出当前输入参数下计算得到的 HOG 特征向量需要占用的内存空间大 小, 并分配对应的内存空间。
+    \item 初始化 Top-k 描述符，并为保存 Top-k 参数内容的结构体创建一个句柄。 同时计算出当前输入参数下计算得到的 Top-k 特征向量需要占用的内存空间大 小, 并分配对应的内存空间。
     \item 准备输入数据，调用 RT 接口分配设备内存，并将输入数据拷贝到设备 内存中。
-    \item MLU 端调用自实现的 HOG 算子，得到 HOG 特征向量。CPU 端调用 RT接口等待任务队列执行完成。
+    \item MLU 端调用自实现的 Top 算子，得到 Top-看 特征向量。CPU 端调用 RT接口等待任务队列执行完成。
     
     \item 调用RT接口将Top-k算子的计算结果复制到主机侧。
     \item 主机侧调用Top-k的串行实现，得到比对的计算结果。
@@ -89,31 +89,222 @@
     \end{equation}
 其中，diff1表示与CPU返回的Top-k计算结果的相对误差，
 diff2表示与CPU返回的Top-k数据的均方差。
-考虑到Top-k算子仅仅只是筛选类的算子，不在原数据上做具体的操作。因此diff1和diff2应当为0才能满足精度要求。
-本部分主要展示输入数据的数据类型为float和int的误差。
+考虑到Top-k算子仅仅只是筛选类算子，不在原数据上做具体的操作。因此diff1和diff2应当为0才能满足精度要求。
+由于Top-k算子需要输出具体的值和坐标（index），因此以下的精度表格中，
+diff1 = diff1\_value + diff1\_index,
+diff2 = diff2\_value + diff2\_index。
+本部分主要展示输入数据的数据类型为float和int的误差。小k场景下的Top-k算子的精度测试结果
+如表~\ref{ab:presicionsmallk}所示。
 \begin{table}
 \centering
 \caption{Top-k功能测试表}
-\label{tab:presicion}
-\begin{tabular}{cllll}
+\label{tab:presicionsmallk}
+\begin{tabular}{clllll}
     \toprule
-    数据规模         & k  & largest & diff1    & diff2 \\
+    数据规模      &dim   & k  & largest & diff1    & diff2 \\
     \midrule
-    （10000） int& 100      & True      & 0.000000 & 0.000000 \\
-    （1024,3000000）int & 10000 & False      & 0.000000 & 0.000000 \\
-    （1,1000000,4,2）float   & 5000 & True      & 0.000000 & 0.000000 \\
-    （1024,3,300,4,8）float & 300 & False      & 0.000000 & 0.000000 \\
-    （100, 3, 30000, 4, 8）int & 20 & True      & 0.000000 & 0.000000 \\
-    （1,1,1,10240000）float & 1000000 & False      & 0.000000 & 0.000000 \\
-
+    （10000） int &0  & 100      & True      & 0.000000 & 0.000000 \\
+    （1024,3000000）int&1 & 8000 & False      & 0.000000 & 0.000000 \\
+    （1,1000000,4,2）int &1  & 5000 & True      & 0.000000 & 0.000000 \\
+    （1,1000,4,2）int &1  & 500 & False      & 0.000000 & 0.000000 \\
+    
+    （1024,3,300,4,8）float&2 & 300 & False      & 0.000000 & 0.000000 \\
+    （100, 3, 30000, 4, 10240000）float&4 & 20 & True      & 0.000000 & 0.000000 \\
+    （1,1,1,10240000）float & 3 & 8192 & False      & 0.000000 & 0.000000 \\
+    （1,1000,10）float & 1  & 500 & True      & 0.000000 & 0.000000 \\
+    
 \bottomrule
 \end{tabular}
 \end{table}
-
-
+片上内存空间大小主要针对NRAM内存大小，结合具体实现过程，将大于8192的k值视为大k场景。其精度测试结果见
+表~\ref{tab:presicionbigk}。由测试结果可以看出，基于RadixSelect算法实现的Top-k算子，分别在大/小k场景下，皆满足对应参数下的
+精度要求，与CPU计算输出结果的各误差均为0\%。
+\begin{table}
+    \centering
+    \caption{Top-k功能测试表}
+    \label{tab:presicionbigk}
+    \begin{tabular}{clllll}
+        \toprule
+        数据规模       &dim  & k  & largest & diff1    & diff2 \\
+        \midrule
+        （102400） int&0&  12000     & True      & 0.000000 & 0.000000 \\
+        （1024,3000000）int&0 & 10000 & False      & 0.000000 & 0.000000 \\
+        （100, 3, 30000, 4, 8）int&2 & 15000 & True      & 0.000000 & 0.000000 \\
+        （400, 2000000）int&1 & 15000 & False      & 0.000000 & 0.000000 \\
+        
+        （1,1,1,10240000）float &3& 1000000 & False      & 0.000000 & 0.000000 \\
+        （1,1000000,4,2）float  &1 & 20000 & True      & 0.000000 & 0.000000 \\
+        （1,1,1,10240000）float&3 & 1000000 & False      & 0.000000 & 0.000000 \\
+        （200,33669）float&1 & 14931 & True      & 0.000000 & 0.000000 \\
+    
+    \bottomrule
+    \end{tabular}
+    \end{table}
 
 \section{Top-k算子性能测试}
+在本节中，我们针对两种场景下的核函数进行性能测试。首先是对比优化前后的性能提升效果。
+而后分别与CPU，DLP-M原版本 Top-k 算子，Nvidia-A100 Top-k 算子显卡进行性能对比。
+\subsection{小k场景下RadixSelect算子性能测试}
+\paragraph{优化前后性能对比}
+\begin{table}
+    \centering
+    \caption{小k场景优化前后测试表}
+    \label{tab:bench_littlek_upgrade}
+    \begin{tabular}{clllll}
+        \toprule
+        数据规模       &k  & dim  & largest & 优化前耗时（us）    & 优化后版本耗时（us） \\
+        \midrule
+        （100,1310720） float&16&  1     & True      & 5970.96 & 3042 \\
+        （100,1310720） float&32&  1     & True      & 5988.87 & 3050 \\
+        （100,1310720） float&50&  1     & True      & 6168.98 & 3200 \\
+        （100,1310720） float&75&  1     & True      & 6185.77 & 3211 \\
+        （100,1310720） float&100&  1     & True      & 6162.35& 3187 \\
+        （100,1310720） float&1000&  1     & True      & 6727.01 & 3493 \\
+        （100,1310720） float&8192&  1     & True      & 13016.7 & 6859 \\
+        
+        \bottomrule
+    \end{tabular}
+    \end{table}
 
-\section{Top-k算子可用性测试}
+
+
+\paragraph{与原版本性能对比}
+小k场景下的Top-k算子主要使用的是基于冒泡排序的Top-k算子，但是
+\begin{table}
+    \centering
+    \caption{小k场景与原版本性能对比表}
+    \label{tab:bench_littlek}
+    \begin{tabular}{clllll}
+        \toprule
+        数据规模       &k  & dim  & largest & RadixSelect耗时    & 原版本耗时 \\
+        \midrule
+        （1,80000） float&100&  1     & True      & 14.99 & 78.22 \\
+        （1,391680） float&1000&  1     & True      & 79 & 10917  \\
+
+        （16,136960） float&10000&  1     & True      & 280 & 1535 \\
+        （32,136960） float&10000&  1     & True      & 400 & 3060 \\
+        （64,136960） float&10000&  1     & True      & 790 & 6405 \\
+        
+        \bottomrule
+    \end{tabular}
+    \end{table}
+
+
+
+\paragraph{与A100-GPU性能对比}
+小k场景下RadixSelect算子性能与NVIDIA A100 GPU进行性能对比，其性能测试数据如表所示。
+\begin{table}
+    \centering
+    \caption{小k场景下DLP-M/A100性能对比表}
+    \begin{tabular}{cllll}
+    \toprule
+    数据规模 & k &   MLU590实测(us) & A100耗时(us) & MLU590/A100性能 \\
+    \midrule
+    （1,16384） & 1024    & 25 & 105 & 3.62 \\
+    （1,16384） & 2048   & 23 & 115 & 3.71 \\
+    （1,16384） & 4096   & 31 & 116 & 3.22 \\
+    （1,16384） & 8192   & 35 & 180 & 4.00 \\
+    （1,65536） & 1024    & 40 & 72 & 1.85 \\
+    （1,65536） & 2048    & 46 & 75 & 1.53 \\
+    （1,65536） & 4096    & 56 & 76 & 1.31 \\
+    （1,65536） & 8192   & 74 & 138 & 1.84 \\
+
+    （1,131072） & 1024    & 45 & 79 & 1.65 \\
+    （1,131072） & 2048    & 51 & 80 & 1.48 \\
+    （1,131072） & 4096    & 67 & 82 & 1.04 \\
+    （1,131072） & 8192   & 102 & 145 & 1.84 \\
+    
+    \bottomrule
+    \end{tabular}
+    \end{table}
+    
+
+
+\subsection{大k场景下}
+
+\paragraph{优化前后性能对比}
+通过对大k场景下的RadixSelect算子实现进行优化后，其在部分测试样例上的表现如表所示。
+\begin{table}
+    \centering
+    \caption{大k场景与原版本性能对比表}
+    \label{tab:bench_bigk_upgrade}
+    \begin{tabular}{clllll}
+        \toprule
+        数据规模       &k  & dim  & largest & 优化前耗时    & 优化后耗时 \\
+        \midrule
+        （100,1310720） float&16384&  1     & True      & 5222 & 4453 \\
+        （100,1310720） float&32768&  1     & True      & 6128 & 5283  \\
+        （100,1310720） float&65536&  1     & True      & 7299 & 6279 \\
+        （100,1310720） float&131072&  1     & True      & 8540 & 7061 \\
+        \bottomrule
+    \end{tabular}
+    \end{table}
+
+
+
+\paragraph{与原版本性能对比}
+在大k场景下，大k版本的Top-k算子主要使用全排序版本，仅在最后输出时，将符合要求的k个数复制到
+主机端，因此存在着大量的冗余计算。
+\begin{table}
+    \centering
+    \caption{大k场景与原版本性能对比表}
+    \label{tab:bench_bigk}
+    \begin{tabular}{clllll}
+        \toprule
+        数据规模       &k  & dim  & largest & RadixSelect耗时    & 原版本耗时 \\
+        \midrule
+        （100,1310720） float&16384&  1     & True      & 4453 & 33832.4 \\
+        （100,1310720） float&32768&  1     & True      & 5283 & 34012.9  \\
+        （100,1310720） float&65536&  1     & True      & 6279 & 34171.8 \\
+        （100,1310720） float&131072&  1     & True      & 7061 & 34197 \\
+        
+        \bottomrule
+    \end{tabular}
+    \end{table}
+
+
+
+\paragraph{与A100-GPU性能对比}
+大k场景下RadixSelect算子性能与NVIDIA A100 GPU进行性能对比，其性能测试数据如表所示。
+\begin{table}
+    \centering
+    \caption{小k场景下DLP-M/A100性能对比表}
+    \begin{tabular}{cllll}
+    \toprule
+    数据规模 & k &   MLU590实测(us) & A100耗时(us) & MLU590/A100性能 \\
+    \midrule
+    （1,32768） & 16384   & 66 & 142 & 2.2 \\
+    （1,65536） & 16384    & 68.5 & 145 & 2.1 \\
+    （1,65536） & 32768   & 92.5 & 143 & 1.6 \\
+
+    （1,131072） & 16384    & 76.2 & 153 & 2.0 \\
+    （1,131072） & 32768   & 85.5 & 155 & 1.8 \\
+    （1,131072） & 65536   & 102.1 & 157 & 1.5 \\
+    
+    （1,262144） & 16384   & 89 & 165.3 & 1.9 \\
+    （1,262144） & 32768   & 101.2 & 167.1 & 1.65 \\
+    （1,262144） & 65536   & 121.7 & 170.1 & 1.4 \\
+    
+
+    \bottomrule
+    \end{tabular}
+    \end{table}
+   
+
+
+
+\section{Top-k算子集成测试}
+\subsection{Pytorch算子注册和网络搭建流程简介}
+
+\subsection{模型和数据集准备}
+
+\subsection{结果展示}
+    
+
+
+
+
+
+
 
 \section{本章小结}
