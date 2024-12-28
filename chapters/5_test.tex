@@ -60,7 +60,7 @@
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[width=1.0\textwidth]{test.png}
+    \includegraphics[width=1.0\textwidth]{test_1.jpg}
     \caption{RadixSelect测试流程图}
     \label{fig:test}
     % \note{注：图注的内容不宜放到图题中。}
@@ -294,12 +294,176 @@ diff2 = diff2\_value + diff2\_index。
 
 
 \section{Top-k算子集成测试}
-\subsection{Pytorch算子注册和网络搭建流程简介}
+Top-k算子的集成测试主要通过面向国产AI处理器的Pytorch框架进行。
+它通过PyTorch社区的后端集成机制允许用户在使用原生社区PyTorch的基础上灵活、快速的接入寒武纪MLU后端。
+为神经网络计算提供了强大的AI加速。
+
+
+\subsection{Pytorch后端集成机制和网络搭建简介}
+\paragraph{Pytorch后端集成机制}
+
+PyTorch的后端集成核心步骤围绕着如何使新后端与框架无缝协作，主要包括注册内核、生成器、设备保护
+以及元数据的序列化和反序列化等操作，确保新后端在PyTorch中能高效运行并提供完整功能。
+在深度学习研究和实际应用中，针对特定硬件或自定义计算逻辑的需求日益增长。为了支持用户在不修改框
+架核心代码的前提下扩展其功能，PyTorch 提供了一种灵活的扩展机制，称为 PrivateUseOne。
+该机制通过注册自定义设备类型和操作逻辑，允许用户在 PyTorch 环境中实现特定需求。
+PrivateUseOne 的核心功能是支持用户注册一个私有设备类型，并为其实现自定义张量操作。
+例如，当需要在特殊硬件设备（如实验性芯片或 FPGA）上运行张量计算时，用户可以通过 
+PrivateUseOne 定义专属的调度逻辑和运算规则。此机制基于 PyTorch 的底层设备调度框架，
+使得自定义设备与原生设备类型（如 CPU、GPU）无缝集成。
+
+实现方法包括以下几个步骤：
+\begin{enumerate}
+    \item {设备类型注册}用户通过调用 PyTorch 提供的接口注册自定义设备类型。
+    \item{扩展张量运算}用户可以实现特定的张量操作逻辑（如加法、矩阵乘法等），并将其关联到自定义设备。
+    \item{调度机制}利用 PyTorch 的调度器，将相关计算操作分发到用户定义的设备中执行。
+\end{enumerate}
+
+在MLU后端成功进行注册后，PyTorch Eager模式下算子间数据传递和存储的基本单元是tensor。
+PyTorch根据tensor中的device属性值将算子分发到不同设备。
+以 abs() 算子为例，在dispatch阶段会根据input\_tensor的设备属性值将算子调用分发到具体设备，
+如下图所示。
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.8\textwidth]{mlu_operators.png}
+    \caption{算子分发机制图}
+    \label{fig:mlu_operators}
+    % \note{注：图注的内容不宜放到图题中。}
+\end{figure}
+
+而在算子调用分发到具体设备之前，需要进行算子注册。
+其基本流程如下：
+算子注册的基本步骤如下：
+\begin{enumerate}
+    \item {定义算子接口}：
+    使用 PyTorch 提供的 \texttt{native\_functions.yaml} 文件定义算子的接口及其功能。在该文件中明确指定算子的名称、输入输出参数以及调度规则。
+    
+    \item {实现算子功能}：
+    在 C++ 或其他语言中实现算子的实际计算逻辑。对于 MLU 硬件，可以基于 Cambricon SDK 提供的算子库进行开发。
+    
+    \item {绑定算子与调度逻辑}：
+    使用 PyTorch 的 \texttt{RegisterDispatchKey} 机制，将自定义算子绑定到 MLU 的计算后端。这一过程需要将算子注册到相应的 Backend（如 \texttt{MLU}）。
+    
+    \item {测试算子功能}：
+    编写测试用例验证算子的正确性，并使用 PyTorch 提供的单元测试框架进行全面测试，以确保算子在不同输入条件下的性能和正确性。
+\end{enumerate}
+其注册的关键点如下：
+\begin{itemize}
+    \item {文件结构}：
+    修改 \texttt{native\_functions.yaml} 和相关 C++ 文件是算子注册的核心工作，不同后端（如 CPU、CUDA、MLU）需要明确区分。
+    
+    \item {设备适配}：
+    结合 {Cambricon SDK}，针对 MLU 硬件优化算子的性能，支持异构计算场景（如多设备调度）。
+    
+    \item {调度与调用}：
+    注册后，PyTorch 会根据输入张量的设备类型，自动调用对应的算子实现。
+\end{itemize}
+
+
+
+
+\subsection{多卡训练}
+
+% PyTorch 是一种灵活且高效的深度学习框架，广泛应用于神经网络模型的研究与开发。其动态计算图和模块化设计使得模型的搭建和训练变得直观且高效。以下从流程的角度总结了基于 PyTorch 搭建模型的主要步骤。
+
+
+% \paragraph{\textbf{定义模型结构}}
+% PyTorch 使用 \texttt{torch.nn.Module} 类来构建神经网络模型。用户可以通过继承该类并重写其 \texttt{forward} 方法来定义自定义模型结构。
+% \begin{enumerate}
+%     \item {初始化模型参数}：在 \texttt{\_\_init\_\_} 方法中定义网络的基本结构，例如卷积层、全连接层和激活函数。
+%     \item {定义前向传播}：通过重载 \texttt{forward} 方法实现模型的前向传播逻辑。
+% \end{enumerate}
+
+% \paragraph {\textbf{选择损失函数与优化器}}
+% 损失函数是模型优化的目标，优化器则用于更新模型参数。
+% \begin{enumerate}
+%     \item PyTorch 提供了多种常用损失函数（如\texttt{torch.nn.MSELoss}）。
+%     \item 通过 \texttt{torch.optim} 模块定义优化器（如 \texttt{SGD}、\texttt{Adam}），并设置学习率等超参数。
+% \end{enumerate}
+
+% \paragraph{\textbf{模型训练}}
+% 模型训练是优化参数以最小化损失函数的过程，通常包括多个迭代周期（epochs）。
+% \begin{enumerate}
+%     \item {前向传播}：将数据输入模型并计算预测值。
+%     \item {计算损失}：通过损失函数计算预测值与真实值之间的差异。
+%     \item {反向传播}：通过 \texttt{loss.backward()} 计算梯度。
+%     \item {参数更新}：利用优化器（如 \texttt{optimizer.step()}）更新模型参数。
+% \end{enumerate}
+
+% \paragraph{\textbf{模型验证与测试}}
+% 在训练完成后，需要使用验证集或测试集评估模型的性能。通常通过以下方式实现：
+% \begin{enumerate}
+%     \item 切换模型到评估模式（使用 \texttt{model.eval()}）。
+%     \item 禁用梯度计算（通过 \texttt{torch.no\_grad()}）。
+%     \item 评估模型在测试集上的指标（如准确率、精确率等）。
+% \end{enumerate}
+
+
+% 上述流程体现了 PyTorch 在深度学习模型开发中的高灵活性和模块化特性。通过合理组织代码结构，
+% 我们可以快速高效的完成从数据预处理、模型定义到训练与验证的完整流程，
+% 从而专注于模型性能的优化和创新性算法的探索。
+
+Cambricon PyTorch （CATCH）目前支持对tensor进行单机多卡和多机多卡的卡间集合通信，对网络进行单机多卡和多机多卡的分布式训练。
+目前支持以下通信原语：卡间广播（broadcast）、卡间规约（allreduce、reduce、reduce\_scatter）、
+卡间收集（allgather、all-to-all），支持进程间同步（barrier）。
+其中，卡间规约又包含4种操作：求和、求连乘、求最大值、求最小值。
+原生框架的Distributed Data Parallel分布式训练机制在单个机器上有两种使用模式：
+a、单进程多卡；b、多进程多卡，每个进程用一张卡（官方推荐模式）。
+
+当前阶段，MLU设备间通信依赖MLU设备通信后端CNCL（Cambricon Communications Library，寒武纪通信库）。
+仅需要在初始化进程组实例时，将backend 参数变换为 cncl，即可以使用国产AI处理器进行分布式训练 。
+
+
+
+
 
 \subsection{模型和数据集准备}
+模型：mixtral8*7b
+
+
+\begin{table}
+    \centering
+    \caption{模型参数}
+    \label{tab:model}
+    \begin{tabular}{cl}
+        \toprule
+        Parameter       &Value   \\
+        \midrule
+        dim & 4096 \\
+        n\_layers & 32 \\
+        head\_dim & 128 \\
+        hidden\_dim & 14336 \\
+        n\_heads & 32 \\
+        n\_kv\_heads & 8 \\
+        context\_len & 32768 \\
+        vocab\_size & 32000 \\
+        num\_experts & 8 \\
+        top\_k\_experts & 2 \\
+        \bottomrule
+    \end{tabular}
+    \end{table}
 
 \subsection{结果展示}
     
+GPU与MLU模型训练loss图：
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.6\textwidth]{loss.png}
+    \caption{GPU/MLU 训练图}
+    \label{fig:loss}
+    % \note{注：图注的内容不宜放到图题中。}
+\end{figure}
+
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.6\textwidth]{mlu_gpu_loss_error.png}
+    \caption{GPU/MLU loss误差图}
+    \label{fig:mlu_gpu_loss_error}
+    % \note{注：图注的内容不宜放到图题中。}
+\end{figure}
 
 
 
