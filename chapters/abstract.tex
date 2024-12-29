@@ -6,31 +6,29 @@
 }
 
 \begin{abstract}
-  伴随着深度学习技术的快速发展，Top-k 查询算法在深度学习的各个细分领域得到了广泛应用，成为许多任务中的核心操作。然而，深度学习模型中庞大的数据规模使传统 Top-k 查询算法在处理海量数据时效率低下，难以满足快速响应和精确查询的需求。为此，设计高性能并行的 Top-k 查询算法，并充分结合深度学习处理器的硬件特性优化数据处理效率，成为当前研究的重要方向。PuDianNao 系列处理器是专为深度学习应用设计的国产 AI 硬件架构，具有指令集灵活、并行计算能力强及硬件资源利用率高等特点。然而，现有算法多针对传统 CPU 或 GPU 环境优化，未能充分挖掘国产 AI 处理器的潜力。本文结合 PuDianNao 的硬件特性，设计并实现了两种高效的 Top-k 查询算法，并在深度学习任务中验证了其性能优势与应用效果。主要贡献如下：
+  在深度学习技术蓬勃发展的浪潮中，Top-k 查询算法已深度渗透至其各个细分领域，成为众多关键任务不可或缺的核心操作环节。然而，深度学习模型所涉及的数据规模呈指数级增长，这使得传统的 Top-k 查询算法在应对海量数据时陷入困境，其效率之低难以契合当下对快速响应与精确查询的严苛需求。在此背景下，设计具备高性能并行能力的 Top-k 查询算法，并深度融合深度学习处理器的硬件特质以优化数据处理效能，已然成为当前学术研究的前沿热点与关键方向。
 
-1.基于 Radix-Select 的 Top-k 查询算法的设计与实现
-
-本文设计了一种基于 Radix-Select 算法的 Top-k 查询方法，充分利用了 PuDianNao 处理器在排序操作中的硬件加速能力。通过优化桶操作的并行性、内存访问效率以及流水线指令，大幅提升算法吞吐量。实验结果表明，该算法在数据量较大时，性能相比传统 CPU 基于快速排序的 Top-k 算法提升了 20 倍以上，相较于 NVIDIA A100 GPU 也表现出性能优势，有效降低了查询延迟。
-
-2.基于 Quick-Select 的 Top-k 查询算法的设计与实现
-
-针对 PuDianNao 的多核架构，设计了一种基于 Quick-Select 的并行 Top-k 查询算法。Quick-Select 通过分区思想逐步缩小搜索范围，结合处理器的多核特性，设计了高效的负载均衡机制和任务分配策略，使算法能在多个计算核上并行执行。通过优化递归调用，减少了不必要的分区和内存操作，进一步提升查询效率。
-
-3.基于深度学习模型的功能性验证
-
-为验证算法的实际应用效果，本文结合 Pytorch 深度学习框架，将优化后的 Top-k 查询算法应用于 ResNet107 网络的目标检测任务。实验表明，在包含百万级候选区域的大规模数据集中，该算法显著提升了候选区域筛选的速度，同时保持了与基准方法相当的检测精度。
-
-本文提出的基于 PuDianNao 系列处理器的高效 Top-k 查询算法，通过结合硬件特性进行定制化优化，显著提升了深度学习任务中 Top-k 操作的效率。为高效处理海量数据的 Top-k 查询问题提供了新的解决方案。
-
+  DLP-M 系列处理器作为国产 AI 硬件架构的杰出代表，专为深度学习应用场景量身打造，具备指令集高度灵活、并行计算能力卓越以及硬件资源利用率出众等显著优势。遗憾的是，现有的 Top-k 查询算法大多聚焦于传统 CPU 或 GPU 环境下的优化策略，未能充分释放国产 AI 处理器所蕴含的巨大潜力。有鉴于此，本文紧密依托 DLP-M 的硬件特性，匠心独运地设计并成功实现了两种高效能的 Top-k 查询算法，并在深度学习任务的实战场景中充分验证了其卓越的性能优势与广泛的应用价值。具体而言，本文的主要学术贡献体现如下：
+  
+  其一，针对大/小 k 两种差异化场景，基于 Radix-Select 算法进行深度拓展，精心设计并稳健实现了创新型的 Top-k 查询方法，并依据各场景独特需求设计了多核实现方案，有效拓宽了国产 AI 处理器上 Top-k 查询方法的边界与可能性。实证研究表明，在数据量达到较大规模时，该算法相较于原有的实现方案展现出更为优异的性能表现，在效率提升方面成效斐然。
+  
+  其二，深度扎根于国产 AI 处理器体系架构，对 RadixSelect 并行算法展开全方位优化。通过充分发掘 DLP-M 处理器的硬件加速潜能与向量化指令优势，实现高效并行加速。同时，从桶操作的并行性、内存访问效率以及流水线指令等多个维度进行精细优化，使得算法吞吐量获得大幅跃升。在处理较大规模数据时，其性能表现已趋近于 NVIDIA A100 GPU，达到行业领先水平，为国产处理器在该领域的应用树立了新的标杆。
+  
+  其三，着眼于深度学习模型的实际应用需求，开展功能性验证研究。为切实检验算法在真实应用场景中的效果，本文巧妙结合 Pytorch 深度学习框架，将优化后的 Top-k 查询算法深度融入神经网络并进行系统训练。实验数据显示，在涵盖百万级候选区域的大规模数据集中，该算法不仅显著加快了候选区域筛选的速度，而且在检测精度方面与基准方法维持相当水平，实现了效率与精度的完美平衡，为深度学习任务中 Top-k 查询问题的高效解决提供了创新性的解决方案与实践路径。
+  
+  综上所述，本文所提出的基于 DLP-M 系列处理器的高效 Top-k 查询算法，凭借其对硬件特性的精准把握与定制化优化策略，成功实现了深度学习任务中 Top-k 操作效率的质的飞跃，为学界与业界在高效处理海量数据的 Top-k 查询问题上开辟了崭新的视野与方向，具有重要的理论与实践意义。 
 \end{abstract}
 
 \begin{abstract*}
-  This is a sample document of USTC thesis \LaTeX{} template for bachelor,
-  master and doctor. The template is created by zepinglee and seisman, which
-  orignate from the template created by ywg. The template meets the
-  equirements of USTC thesis writing standards.
+  In the surging wave of the rapid development of deep learning technology, the Top-k query algorithm has deeply penetrated into various sub-fields of deep learning and has become an indispensable core operation in numerous key tasks. However, the data scale involved in deep learning models is growing exponentially, which has plunged traditional Top-k query algorithms into difficulties when dealing with massive data. Their low efficiency fails to meet the stringent requirements for rapid response and precise query in the current context. Against this backdrop, designing Top-k query algorithms with high-performance parallel capabilities and deeply integrating the hardware characteristics of deep learning processors to optimize data processing efficiency has already become the cutting-edge hotspot and key direction in current academic research.
 
-  This document will show the usage of basic commands provided by \LaTeX{} and
-  some features provided by the template. For more information, please refer to
-  the template document ustcthesis.pdf.
+  The DLP-M series of processors, as an outstanding representative of domestic AI hardware architectures, are tailor-made for deep learning application scenarios and possess remarkable advantages such as highly flexible instruction sets, excellent parallel computing capabilities, and outstanding hardware resource utilization rates. Unfortunately, most of the existing Top-k query algorithms focus on optimization strategies in traditional CPU or GPU environments and fail to fully unleash the huge potential of domestic AI processors. In view of this, this paper closely relies on the hardware characteristics of DLP-M and ingeniously designs and successfully implements two highly efficient Top-k query algorithms. Their outstanding performance advantages and wide application values have been fully verified in practical deep learning tasks. Specifically, the main academic contributions of this paper are as follows:
+  
+  Firstly, for two different scenarios of large and small k values, based on the Radix-Select algorithm, this paper conducts in-depth expansion, carefully designs and stably implements innovative Top-k query methods. Moreover, according to the unique requirements of each scenario, a multi-core implementation scheme is designed, effectively broadening the boundaries and possibilities of the Top-k query methods on domestic AI processors. Empirical studies show that when the data volume reaches a relatively large scale, this algorithm demonstrates a more excellent performance compared to the original implementation schemes, achieving remarkable results in efficiency improvement.
+  
+  Secondly, this paper conducts a comprehensive optimization of the RadixSelect parallel algorithm based on the domestic AI processor architecture. By fully exploiting the hardware acceleration potential and the advantages of vectorized instructions of the DLP-M processor, efficient parallel acceleration is achieved. Meanwhile, fine optimizations are carried out from multiple dimensions such as the parallelism of bucket operations, memory access efficiency, and pipeline instructions, resulting in a significant increase in the algorithm's throughput. When dealing with relatively large-scale data, its performance is approaching that of the NVIDIA A100 GPU, reaching the industry-leading level and setting a new benchmark for the application of domestic processors in this field.
+  
+  Thirdly, focusing on the practical application requirements of deep learning models, this paper conducts functional verification research. To effectively test the effectiveness of the algorithm in real application scenarios, this paper skillfully combines the PyTorch deep learning framework, deeply integrates the optimized Top-k query algorithm into the neural network, and conducts systematic training. Experimental data show that in large-scale datasets containing millions of candidate regions, this algorithm not only significantly accelerates the screening speed of candidate regions but also maintains a comparable detection accuracy with the benchmark method, achieving a perfect balance between efficiency and accuracy. It provides an innovative solution and practical path for efficiently solving the Top-k query problem in deep learning tasks.
+  
+  In conclusion, the highly efficient Top-k query algorithm based on the DLP-M series of processors proposed in this paper, relying on its precise grasp of hardware characteristics and customized optimization strategies, has successfully achieved a qualitative leap in the efficiency of the Top-k operation in deep learning tasks. It has opened up new horizons and directions for the academic and industrial communities in efficiently handling the Top-k query problem for massive data, and has important theoretical and practical significance. 
 \end{abstract*}

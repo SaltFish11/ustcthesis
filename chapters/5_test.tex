@@ -97,7 +97,7 @@ diff2 = diff2\_value + diff2\_index。
 如表~\ref{ab:presicionsmallk}所示。
 \begin{table}
 \centering
-\caption{Top-k功能测试表}
+\caption{小k场景下Top-k功能测试表}
 \label{tab:presicionsmallk}
 \begin{tabular}{clllll}
     \toprule
@@ -116,12 +116,12 @@ diff2 = diff2\_value + diff2\_index。
 \bottomrule
 \end{tabular}
 \end{table}
-片上内存空间大小主要针对NRAM内存大小，结合具体实现过程，将大于8192的k值视为大k场景。其精度测试结果见
+片上内存空间大小主要针对NRAM内存大小，结合具体实现过程，将不小于10000的k值视为大k场景。其精度测试结果见
 表~\ref{tab:presicionbigk}。由测试结果可以看出，基于RadixSelect算法实现的Top-k算子，分别在大/小k场景下，皆满足对应参数下的
 精度要求，与CPU计算输出结果的各误差均为0\%。
 \begin{table}
     \centering
-    \caption{Top-k功能测试表}
+    \caption{大k场景下Top-k功能测试表}
     \label{tab:presicionbigk}
     \begin{tabular}{clllll}
         \toprule
@@ -220,7 +220,7 @@ diff2 = diff2\_value + diff2\_index。
     
 
 
-\subsection{大k场景下}
+\subsection{大k场景下RadixSelect算子性能测试}
 
 \paragraph{优化前后性能对比}
 通过对大k场景下的RadixSelect算子实现进行优化后，其在部分测试样例上的表现如表所示。
@@ -324,7 +324,7 @@ PyTorch根据tensor中的device属性值将算子分发到不同设备。
 以 abs() 算子为例，在dispatch阶段会根据input\_tensor的设备属性值将算子调用分发到具体设备，
 如下图所示。
 
-\begin{figure}[ht]
+\begin{figure}
     \centering
     \includegraphics[width=0.8\textwidth]{mlu_operators.png}
     \caption{算子分发机制图}
@@ -360,6 +360,7 @@ PyTorch根据tensor中的device属性值将算子分发到不同设备。
     注册后，PyTorch 会根据输入张量的设备类型，自动调用对应的算子实现。
 \end{itemize}
 
+通过以上步骤，我们可以将RadixSelect Top-k算子集成到Pytorch中，并在国产AI处理器上进行Top-k计算，供上游的模型进行使用。
 
 
 
@@ -412,16 +413,16 @@ Cambricon PyTorch （CATCH）目前支持对tensor进行单机多卡和多机多
 a、单进程多卡；b、多进程多卡，每个进程用一张卡（官方推荐模式）。
 
 当前阶段，MLU设备间通信依赖MLU设备通信后端CNCL（Cambricon Communications Library，寒武纪通信库）。
-仅需要在初始化进程组实例时，将backend 参数变换为 cncl，即可以使用国产AI处理器进行分布式训练 。
+仅需要在初始化进程组实例时，将backend 参数变换为 cncl，
+即可以基于国产AI处理器使用分布式训练框架进行分布式训练，继而进行算子的集成测试。
 
 
 
 
 
 \subsection{模型和数据集准备}
-模型：mixtral8*7b
-
-
+在集成测试中，本文选用Mixtral8\times7B大模型，其主要基于 Transformer 架构，支持上下文长度达到 32k token，并且前馈块被 Mixture-of-Expert（MoE）层取代。
+模型主要参数如下表~\ref{tab:model}。
 \begin{table}
     \centering
     \caption{模型参数}
@@ -444,10 +445,47 @@ a、单进程多卡；b、多进程多卡，每个进程用一张卡（官方推
     \end{tabular}
     \end{table}
 
-\subsection{结果展示}
-    
-GPU与MLU模型训练loss图：
+    其中，在整个模型架构中，本文所涉及的Top-k算子主要集中在MOE层。
+    其主要结构如图~\ref{fig:moe}所示,
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=1.0\textwidth]{moe.png}
+    \caption{MOE模型结构图}
+    \label{fig:moe}
+    % \note{注：图注的内容不宜放到图题中。}
+\end{figure}
 
+而MOE层的模型结构主要有两个关键部分组成:
+\begin{enumerate}
+    \item{稀疏 MoE 层}: 这些层代替了传统 Transformer 模型中的前馈网络 (FFN) 层。MoE 层包含若干“专家”(Mixtral8\times7B 中有 8 个)，每个专家本身是一个独立的神经网络。在实际应用中，这些专家通常是前馈网络 (FFN)，但它们也可以是更复杂的网络结构，甚至可以是 MoE 层本身，从而形成层级式的 MoE 结构。
+    \item {门控网络或路由}:
+    这个部分用于决定哪些token被发送到哪个expert。例如，在下图中，“More”这个token可能被发送到第二个专家，而“Parameters”这个token被发送到第一个专家。有时，一个token甚至可以被发送到多个专家。token的路由方式是 MoE 使用中的一个关键点，因为路由器由学习的参数组成，并且与网络的其他部分一同进行预训练。
+\end{enumerate}
+计算过程如下述公式。
+\begin{equation}
+MoE(x) = \sum_{i = 1}^{n} (G(x)_i E_i(x))
+\end{equation}
+
+\begin{equation}
+G(x) = TopK(\text{softmax}(W_g x + \epsilon))
+\end{equation}
+
+上述第1个公式表示了包含 $n$ 个专家的MoE层的计算过程。具体来讲，首先对样本 $x$ 进行门控计算，$W$ 表示权重矩阵；然后，由 $\text{Softmax}$ 处理后获得样本 $x$ 被分配到各个 $\text{expert}$ 的权重；然后，只取前 $k$（通常取1或者2）个最大权重；最终，整个 $\text{MoE Layer}$ 的计算结果就是选中的 $k$ 个专家网络输出的加权和。
+
+在确定好模型之后，需要进行数据集的准备。在本集成测试实验中，使用的数据集为OpenWebText，
+其是一个大规模的文本数据集，在自然语言处理（NLP）领域，特别是在无监督预训练语言模型的开发中
+具有重要地位。它包含数十亿个单词，能够为语言模型提供丰富的语言信息。
+它主要用于预训练语言模型，如OpenAI的 GPT（Generative Pretrained Transformer）系列模型。在预训练阶段，语言模型通过学习 OpenWebText 中的文本序列，捕捉语言的统计规律和语义信息，从而构建语言的内在表示。
+在进行训练之前，需要将其转换为raw-data形式，相关命令如下：
+
+
+\subsection{结果展示}
+由于训练成熟的大语言模型需要大量的训练技巧和硬件资源，对于算子的集成测试而言，其是没有必要的。
+因此本节中仅对比模型在国产AI芯片和NVIDIA GPU前100 step的训练表现，
+以此来作为国产AI芯片上的Top-k算子可用的依据。
+    
+GPU与MLU模型训练loss如图~\ref{fig:loss}所示，我们可以发现，在整个训练过程中，
+国产AI芯片的训练loss趋势与NVIDIA A100 GPU的loss趋势基本保持吻合。 
 \begin{figure}[ht]
     \centering
     \includegraphics[width=0.6\textwidth]{loss.png}
@@ -455,8 +493,13 @@ GPU与MLU模型训练loss图：
     \label{fig:loss}
     % \note{注：图注的内容不宜放到图题中。}
 \end{figure}
-
-
+为了更好的衡量两只之间的吻合程度，我们进行相对误差分析，其公式如~\ref{eq:loss_error}所示：
+\begin{equation}
+    \label{eq:loss_error}
+    diff = \frac{\vert mluloss - gpuloss \vert}{gpuloss}
+\end{equation}
+对于相对误差，一般要求其低于0.01。GPU与MLU模型训练loss相对误差如图~\ref{fig:mlu_gpu_loss_error}所示，我们可以发现，
+在每个step中，相对误差基本都维持在0.01以下，满足了基本要求。
 \begin{figure}[ht]
     \centering
     \includegraphics[width=0.6\textwidth]{mlu_gpu_loss_error.png}
@@ -467,8 +510,9 @@ GPU与MLU模型训练loss图：
 
 
 
-
-
-
-
 \section{本章小结}
+本章首先介绍了  Top-k 算子测试实验所依赖的软硬件环境，紧接着对 
+ Top-K算子的测试流程进行了系统的概述。鉴于 Top-k 算子输入参数的多样性和复杂性， 
+为了确保测试能够全面覆盖所有参数的取值，基于大/小k两种场景分别进行了功能测试和性能测试。
+最后将Top-k算子注册在Pytorch框架中，基于Mixtral8\times7B大语言模型进行Top-k算子的集成测试。
+验证了本文Top-k算子的可用性。
