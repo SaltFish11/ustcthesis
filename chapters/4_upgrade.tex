@@ -33,12 +33,13 @@ S = N - P \cdot (N - 1)
 
 
 \section{Top-k算法访存效率优化}
-\subsection{radix-select Top-k 算法的digit调优}
+% \subsection{radix-select Top-k 算法的digit调优}
 
-以float-int32+默认kernel作为一般情况分析：radix的选择（对应代码变量
-digit的大小），当digit为1的时候，bucket\_num=2，float对应32bit，需要32次捞取，digit为4，bucket\_num=16，
-需要8次捞取，digit为32，bucket\_num=2\^32，需要捞取1次，radix选择的越大，
-则I/O时间越短。
+% 以float-int32+默认kernel作为一般情况分析：radix的选择（对应代码变量
+% digit的大小），当digit为1的时候，bucket\_num=2，float对应32bit，需要32次捞取，digit为4，bucket\_num=16，
+% 需要8次捞取，digit为32，bucket\_num=2\^32，需要捞取1次，radix选择的越大，
+% 则总的I/O时间越短。
+
 
 
 \subsection{显存I/O优化}
@@ -74,7 +75,7 @@ bank冲突和请求的地址，GDR的形态以及地址映射相关。
 \begin{figure}[ht]
     \centering
  \includegraphics[width = 0.9\textwidth]{bank_conflic_1.jpg}
-    \caption{}
+    \caption{Cluster级连续I/O示意图}
     \label{fig:bank_conflic}
     % \note{注：图注的内容不宜放到图题中。}
 \end{figure}
@@ -89,6 +90,7 @@ b.数据对齐：确保数据的存储地址按照 的内存访问要求进行�
 表~\ref{tab:alignment}。
 
 \begin{table}
+    \caption{存储类型及其对齐方式}
     \centering
     \begin{tabular}{lcc}
     \toprule
@@ -101,7 +103,7 @@ b.数据对齐：确保数据的存储地址按照 的内存访问要求进行�
     LDRAM & 512B & 512B \\
     \bottomrule
     \end{tabular}
-    \caption{存储类型及其对齐方式}
+
     \label{tab:alignment}
     \end{table}
 此优化方法体现在对各个变量进行空间划分时，大小尽可能满足数据对齐的倍数即可。
@@ -127,7 +129,7 @@ b.数据对齐：确保数据的存储地址按照 的内存访问要求进行�
 \begin{figure}[ht]
     \centering
     \includegraphics[scale = 0.5]{three_level.png}
-    \caption{}
+    \caption{三级流水示意图}
     \label{fig:three_level}
     % \note{注：图注的内容不宜放到图题中。}
 \end{figure}
@@ -151,7 +153,7 @@ SRAM 搬运到 GDRAM 上。五级 软件流水运行过程，
 \begin{figure}[ht]
     \centering
     \includegraphics[scale = 0.5]{five_level.png}
-    \caption{}
+    \caption{五级流水示意图}
     \label{fig:five_level}
     % \note{注：图注的内容不宜放到图题中。}
 \end{figure}
@@ -189,7 +191,7 @@ Cache 中的一段指令序列顺序开始执行后， 经过分发和调度被�
 \begin{figure}[ht]
     \centering
     \includegraphics[scale = 0.5]{inst_queue.png}
-    \caption{}
+    \caption{多队列指令流水线}
     \label{fig:inst_queue}
     % \note{注：图注的内容不宜放到图题中。}
 \end{figure}
@@ -203,7 +205,7 @@ Cache 中的一段指令序列顺序开始执行后， 经过分发和调度被�
 加操作。在RadixSelect实现阶段，数据预处理阶段满足指令融合的要求，因此在此阶段可以进行指令融合。
 \begin{figure}[ht]
     \centering
-    \includegraphics[scale = 0.7]{fusion.jpg}
+    \includegraphics[scale = 0.6]{fusion.jpg}
     \caption{指令融合示例图}
     \label{fig:fusion}
     % \note{注：图注的内容不宜放到图题中。}
@@ -240,7 +242,7 @@ Union3。
 \begin{figure}[ht]
     \centering
     \includegraphics[scale = 0.5]{cluster_arch.png}
-    \caption{}
+    \caption{DLP-M Cluster架构}
     \label{fig:cluster_arch}
     % \note{注：图注的内容不宜放到图题中。}
 \end{figure}
@@ -263,8 +265,8 @@ RT提供了丰富且灵活的队列管理接口、异步 Kernel 执行接口和�
 通过这样的操作，可以有效的将主机端与设备端之间的IO与计算相互掩盖。达到减少整个任务计算时间的效果，如图~\ref{fig:level}所示。
 \begin{figure}[ht]
     \centering
-    \includegraphics[scale = 0.7]{level_1.jpg}
-    \caption{}
+    \includegraphics[scale = 0.6]{level_1.jpg}
+    \caption{多队列优化效果图}
     \label{fig:level}
     % \note{注：图注的内容不宜放到图题中。}
 \end{figure}
