@@ -143,80 +143,136 @@ diff2 = diff2\_value + diff2\_index。
 
 \section{Top-k算子性能测试}
 在本节中，我们针对两种场景下的核函数进行性能测试。首先是对比优化前后的性能提升效果。
-而后分别与CPU，DLP-M原版本 Top-k 算子，Nvidia-A100 Top-k 算子显卡进行性能对比。
+而后分别与DLP-M原版本 Top-k 算子，Nvidia-A100 Top-k 算子显卡进行性能对比。
 \subsection{小k场景下RadixSelect算子性能测试}
 \paragraph{优化前后性能对比}
+在使用前文中的各种优化手段后，本节对（100, 1310720）这一数据规模进行了实验测试，
+以说明对于任务规模优化，I/O优化，计算效率优化后的加速效果。
+具体数据如表~\ref{tab:bench_littlek_upgrade}所示。
+在经过优化之后，性能加速效果维持在48\%左右。
+
 \begin{table}
     \centering
     \caption{小k场景优化前后测试表}
     \label{tab:bench_littlek_upgrade}
-    \begin{tabular}{clllll}
+    \begin{tabular}{cllllll}
         \toprule
-        数据规模       &k  & dim  & largest & 优化前耗时（us）    & 优化后版本耗时（us） \\
+        数据规模       &k  & dim  & largest & 优化前耗时（us）    & 优化后耗时（us） &加速比\\
         \midrule
-        （100,1310720） float&16&  1     & True      & 5970.96 & 3042 \\
-        （100,1310720） float&32&  1     & True      & 5988.87 & 3050 \\
-        （100,1310720） float&50&  1     & True      & 6168.98 & 3200 \\
-        （100,1310720） float&75&  1     & True      & 6185.77 & 3211 \\
-        （100,1310720） float&100&  1     & True      & 6162.35& 3187 \\
-        （100,1310720） float&1000&  1     & True      & 6727.01 & 3493 \\
-        （100,1310720） float&8192&  1     & True      & 13016.7 & 6859 \\
+        （100,1310720） float&16&  1     & True      & 5970.96 & 3042 &  0.4905\\
+        （100,1310720） float&32&  1     & True      & 5988.87 & 3050 &  0.4907\\
+        （100,1310720） float&50&  1     & True      & 6168.98 & 3200 &  0.4813 \\
+        （100,1310720） float&75&  1     & True      & 6185.77 & 3211 &  0.4809 \\
+        （100,1310720） float&100&  1     & True      & 6162.35& 3187 &  0.4828 \\
+        （100,1310720） float&1000&  1     & True      & 6727.01 & 3493 & 0.4807 \\
+        （100,1310720） float&8192&  1     & True      & 13016.7 & 6859 & 0.4731 \\
         
         \bottomrule
     \end{tabular}
     \end{table}
+具体效果如图{zhexian-lk-upgrade.png}所示，
+对比效果图我们可以发现，在相同输入规模下，随着k的增加，优化前后的时间都在逐渐增加。
+这反映了对于相同的输入规模而言，k的值越大，单个MLU-Core的任务量也就越大，在执行RadixSelect
+算法时，其“FIND TARGET BUCKET”与”FILTER“中的任务也将更复杂。
 
-
+\begin{figure}[ht]
+        \centering
+        \includegraphics[width=0.8\textwidth]{zhexian-lk-upgrade.png}
+        \caption{小k场景优化前后对比图}
+        \label{fig:bench_littlek_upgrade_zhexian}
+        % \note{注：图注的内容不宜放到图题中。}
+    \end{figure}
+    
 
 \paragraph{与原版本性能对比}
-小k场景下的Top-k算子主要使用的是基于冒泡排序的Top-k算子，但是
+原版本小k场景下的Top-k算子主要使用的是基于冒泡排序的Top-k算子，其串行算法的时间复杂度为O（kN）。
+在k和N都不太大的时候，其性能表现尚可，但是当数据规模较大时，Top-k算子的性能将会受到影响。
+同时，当数据中存在Nan和Inf时，原版本实现为了满足与CPU结果对齐的要求，将会引入
+很多对于正常数据而言不必要的操作，性能将会大幅度下降。此时Top-k算子主要基于RadixSort全排序算法。
+其性能对比数据如表~\ref{tab:bench_littlek}所示。可以发现小k场景下的实现明显优于原版本。
 \begin{table}
     \centering
     \caption{小k场景与原版本性能对比表}
     \label{tab:bench_littlek}
-    \begin{tabular}{clllll}
+    \begin{tabular}{cllllll}
         \toprule
-        数据规模       &k  & dim  & largest & RadixSelect耗时    & 原版本耗时 \\
+        数据规模       &k  & dim  & largest & RadixSelect耗时    & 原版本耗时 &加速比\\
         \midrule
-        （1,80000） float&100&  1     & True      & 14.99 & 78.22 \\
-        （1,391680） float&1000&  1     & True      & 79 & 10917  \\
+        （1,80000） float&100&  1     & True      & 14.99 & 78.22 & 0.8093\\
+        %（1,391680） float&1000&  1     & True      & 79 & 10917  & 0.9721 \\  
 
-        （16,136960） float&10000&  1     & True      & 280 & 1535 \\
-        （32,136960） float&10000&  1     & True      & 400 & 3060 \\
-        （64,136960） float&10000&  1     & True      & 790 & 6405 \\
+        （16,136960） float&10000&  1     & True      & 280 & 1535 & 0.8176\\
+        （32,136960） float&10000&  1     & True      & 400 & 3060 & 0.8693\\
+        （64,136960） float&10000&  1     & True      & 790 & 6405 & 0.8767\\
         
         \bottomrule
     \end{tabular}
     \end{table}
 
+将B和k分别固定为136960和10000,对于不同的A的数值进行绘图，如图~\ref{fig:bench_littlek-vsorigin}所示。
+可以发现随着输入数据规模的增大，相较于原来版本的加速效果越来越好。
+    \begin{figure}[ht]
+        \centering
+        \includegraphics[width=0.9\textwidth]{zhexian-lk-vsorigin.png}
+        \caption{小k场景优化前后对比图}
+        \label{fig:bench_littlek-vsorigin}
+        % \note{注：图注的内容不宜放到图题中。}
+    \end{figure}
+    
 
 
 \paragraph{与A100-GPU性能对比}
-小k场景下RadixSelect算子性能与NVIDIA A100 GPU进行性能对比，其性能测试数据如表所示。
+小k场景下RadixSelect算子性能与NVIDIA A100 GPU进行性能对比，其性能测试数据如表
+~\ref{tab:lkvsa100}所示。
 \begin{table}
     \centering
     \caption{小k场景下DLP-M/A100性能对比表}
     \begin{tabular}{cllll}
     \toprule
-    数据规模 & k &   MLU590实测(us) & A100耗时(us) & MLU590/A100性能 \\
+    数据规模 & k &   MLU590实测(us) & A100耗时(us) & 加速比 \\
     \midrule
-    （1,16384） & 1024    & 25 & 105 & 3.62 \\
-    （1,16384） & 2048   & 23 & 115 & 3.71 \\
-    （1,16384） & 4096   & 31 & 116 & 3.22 \\
-    （1,16384） & 8192   & 35 & 180 & 4.00 \\
-    （1,65536） & 1024    & 40 & 72 & 1.85 \\
-    （1,65536） & 2048    & 46 & 75 & 1.53 \\
-    （1,65536） & 4096    & 56 & 76 & 1.31 \\
-    （1,65536） & 8192   & 74 & 138 & 1.84 \\
+    （1,16384） & 1024    & 25 & 105 & 0.76 \\
+    （1,16384） & 2048   & 23 & 115 & 0.80 \\
+    （1,16384） & 4096   & 31 & 116 & 0.73 \\
+    （1,16384） & 8192   & 35 & 180 & 0.81 \\
+    （1,65536） & 1024    & 40 & 72 & 0.44 \\
+    （1,65536） & 2048    & 46 & 75 & 0.39 \\
+    （1,65536） & 4096    & 56 & 76 & 0.26 \\
+    （1,65536） & 8192   & 74 & 138 & 0.46 \\
 
-    （1,131072） & 1024    & 45 & 79 & 1.65 \\
-    （1,131072） & 2048    & 51 & 80 & 1.48 \\
-    （1,131072） & 4096    & 67 & 82 & 1.04 \\
-    （1,131072） & 8192   & 102 & 145 & 1.84 \\
+    （1,131072） & 1024    & 45 & 79 & 0.43 \\
+    （1,131072） & 2048    & 51 & 80 & 0.36 \\
+    （1,131072） & 4096    & 67 & 82 & 0.18 \\
+    （1,131072） & 8192   & 102 & 145 & 0.30 \\
     
     \bottomrule
     \end{tabular}
-    \end{table}
+\label{tab:lkvsa100}    
+\end{table}
+    
+    在相同输入规模，不同k值下进行绘图，如图~\ref{fig:bench_littlek_vsa100_zhexian}
+    和~\ref{fig:bench_littlek_vsa100_2_zhexian}所示。随着输入规模的增大，
+    DLP-M平台与A100平台上的Topk算子的耗时都逐步增加，并且随着数据规模的增大，加速比总体上呈现
+    逐步下降的趋势，当k过大时（如8192），DLP-M的加速比骤然变大，这应当主要由于
+    DLP-M与A100的体系结构差异导致的，即此时A100上的Top-k算子可能切换到了别的版本实现中，但由于时间问题，并没有进一步深究。
+    整体而言，在输入较小时，相较于A100可以达到3.5-4倍的提速。
+    在输入较大时，相较于A100可以达到1.3-1.8倍的提速。
+
+    \begin{figure}[ht]
+        \centering
+        \includegraphics[width=0.8\textwidth]{zhexian-lkvsA100.png}
+        % \caption{小k场景优化前后对比图}
+        \label{fig:bench_littlek_vsa100_zhexian}
+        % \note{注：图注的内容不宜放到图题中。}
+    \end{figure}
+    
+    \begin{figure}[ht]
+        \centering
+        \includegraphics[width=0.8\textwidth]{zhexian-lkvsA100-2.png}
+        \caption{小k场景优化前后对比图}
+        \label{fig:bench_littlek_vsa100_2_zhexian}
+        % \note{注：图注的内容不宜放到图题中。}
+    \end{figure}
     
 
 
@@ -224,27 +280,42 @@ diff2 = diff2\_value + diff2\_index。
 
 \paragraph{优化前后性能对比}
 通过对大k场景下的RadixSelect算子实现进行优化后，其在部分测试样例上的表现如表所示。
+在对于（100,1310720）这一输入规模下，随着k的增大耗时逐渐增加。
+相较于优化前，加速比维持在0.13-0.18之间。
 \begin{table}
     \centering
-    \caption{大k场景与原版本性能对比表}
+    \caption{大k场景优化前后性能对比表}
     \label{tab:bench_bigk_upgrade}
-    \begin{tabular}{clllll}
+    \begin{tabular}{cllllll}
         \toprule
-        数据规模       &k  & dim  & largest & 优化前耗时    & 优化后耗时 \\
+        数据规模       &k  & dim  & largest & 优化前耗时    & 优化后耗时 &加速比\\
         \midrule
-        （100,1310720） float&16384&  1     & True      & 5222 & 4453 \\
-        （100,1310720） float&32768&  1     & True      & 6128 & 5283  \\
-        （100,1310720） float&65536&  1     & True      & 7299 & 6279 \\
-        （100,1310720） float&131072&  1     & True      & 8540 & 7061 \\
+        （100,1310720） float&16384&  1     & True      & 5222 & 4453 & 0.1473\\
+        （100,1310720） float&32768&  1     & True      & 6128 & 5283 & 0.1379\\
+        （100,1310720） float&65536&  1     & True      & 7299 & 6279 & 0.1397\\
+        （100,1310720） float&131072&  1     & True      & 8540 & 7061 & 0.1732\\
         \bottomrule
     \end{tabular}
     \end{table}
+    
+    
+    \begin{figure}[ht]
+        \centering
+        \includegraphics[width=0.8\textwidth]{zhexian-bk-upgrade.png}
+        \caption{大k场景优化前后对比图}
+        \label{fig:bench_bk_upgrade_zhexian}
+        % \note{注：图注的内容不宜放到图题中。}
+    \end{figure}
+    
 
 
 
 \paragraph{与原版本性能对比}
 在大k场景下，大k版本的Top-k算子主要使用全排序版本，仅在最后输出时，将符合要求的k个数复制到
-主机端，因此存在着大量的冗余计算。
+主机端，因此原来版本的耗时比较稳定，而对于RadixSelect而言，随着k的值越来越大，每个ML
+U-Core的任务量也越来越大，在执行RadixSelect的耗时逐步增加，因此其加速比逐渐降低，
+其测试数据如表~\ref{tab:bench_bigk}所示，
+折线图如图~\ref{fig:bench_bk_vsorigin_zhexian}所示。
 \begin{table}
     \centering
     \caption{大k场景与原版本性能对比表}
@@ -261,19 +332,30 @@ diff2 = diff2\_value + diff2\_index。
         \bottomrule
     \end{tabular}
     \end{table}
-
+    \begin{figure}[ht]
+        \centering
+        \includegraphics[width=0.7\textwidth]{zhexian-bk-vsorigin.png}
+        \caption{与原版本性能对比图}
+        \label{fig:bench_bk_vsorigin_zhexian}
+        % \note{注：图注的内容不宜放到图题中。}
+    \end{figure}
+    
+    
 
 
 \paragraph{与A100-GPU性能对比}
-大k场景下RadixSelect算子性能与NVIDIA A100 GPU进行性能对比，其性能测试数据如表所示。
+大k场景下RadixSelect算子性能与NVIDIA A100 GPU进行性能对比，
+在相同输入规模，不同k值下进行绘图，如图~\ref{fig:bench_bk_vsa100_zhexian}所示。随着输入规模的增大，
+DLP-M平台与A100平台上的Topk算子的耗时都逐步增加，并且随着数据规模的增大，加速比总体上呈现
+逐步下降的趋势。整体而言，相较于A100可以达到1.4-2.3倍的提速。
 \begin{table}
     \centering
-    \caption{小k场景下DLP-M/A100性能对比表}
+    \caption{大k场景下DLP-M/A100性能对比表}
     \begin{tabular}{cllll}
     \toprule
-    数据规模 & k &   MLU590实测(us) & A100耗时(us) & MLU590/A100性能 \\
+    数据规模 & k &   MLU590实测(us) & A100耗时(us) & 加速比 \\
     \midrule
-    （1,32768） & 16384   & 66 & 142 & 2.2 \\
+    % （1,32768） & 16384   & 66 & 142 & 2.2 \\
     （1,65536） & 16384    & 68.5 & 145 & 2.1 \\
     （1,65536） & 32768   & 92.5 & 143 & 1.6 \\
 
@@ -289,9 +371,17 @@ diff2 = diff2\_value + diff2\_index。
     \bottomrule
     \end{tabular}
     \end{table}
-   
 
 
+    \begin{figure}[ht]
+        \centering
+        \includegraphics[width=0.7\textwidth]{zhexian-bkvsA100.png}
+        \caption{大k场景优化前后对比图}
+        \label{fig:bench_bk_vsa100_zhexian}
+        % \note{注：图注的内容不宜放到图题中。}
+    \end{figure}
+    
+  
 
 \section{Top-k算子集成测试}
 Top-k算子的集成测试主要通过面向国产AI处理器的Pytorch框架进行。

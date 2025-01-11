@@ -211,6 +211,92 @@ Cache 中的一段指令序列顺序开始执行后， 经过分发和调度被�
     % \note{注：图注的内容不宜放到图题中。}
 \end{figure}
 
+最后，对于RadixSelect算法而言，在特定的情况下，数据可能会落入所有的桶中，这将会使得
+FILTER阶段的操作变得没有意义，因为此时不存在无效数据。因此在FIND TARGET BUCKET阶段，
+可以对各个桶进行检查：当桶中的数据等于本轮迭代所有数据个数时，直接进入到下一次迭代。
+这将有效的减少冗余计算。更改后的FIND TARGET BUCKET阶段伪代码片段如下：
+% \begin{algorithm}
+%     \tcp{\underline{FIND TARGET BUCKET}\; }
+%     \For{$i \leftarrow 0$ to $2^r - 1$}{
+%         \If{$Bucket[i] \eq AllNum$}{
+            
+%             \textbf{break}\;
+%         }\\
+%         \If{$Bucket[i] \ge k$}{
+%             $POS \leftarrow Bucket[i]$\;\\
+%             \textbf{break}\;
+%         }
+%     }
+%     % \caption{CountingSort Algorithm-Early Stop}
+% \end{algorithm}
+
+\begin{algorithm}
+    \caption{CountingSort Algorithm-Early Stop}
+    \label{alg:counting_sort_early_stop}
+    \tcp{\underline{FIND TARGET BUCKET WITH EARLY STOP}\; }
+    $STOP \leftarrow False$\\
+    \For{$i \leftarrow 0$ to $2^r - 1$}{
+        \If{$Bucket[i] = AllNum$}{
+            $STOP \leftarrow True$\\
+            \textbf{break}\;
+        }    
+        \If{$Bucket[i] \ge k$}{
+            $POS \leftarrow Bucket[i]$\;\\
+            \textbf{break}\;
+        }
+    }
+    \If{$STOP = True$}{
+        \textbf{break}\;
+    }
+\end{algorithm}
+% 整体伪代码如下：
+% \begin{algorithm}
+%     \SetAlgoNoLine 
+%     % \SetAlgoLined
+%     % \LinesNumbered            % 强制显示所有行号
+%     \KwIn{Array $D$ with $n$ entries, integer $k \leq n$}
+%     \KwOut{array R is the Top-k elements}
+%     $Bucket \leftarrow$ init $0$ \tcp{Initialize buckets}
+%     \tcp{\underline{HISTOGRAM - KEYS}\; }
+%     \For{$j \leftarrow 0$ to $N - 1$}{
+%         $Bucket[D[j]] \leftarrow Bucket[D[j]] + 1$
+%     }
+%     \tcp{\underline{SCAN - BUCKETS}\; }
+%     $Sum \leftarrow 0$\;\\
+%     \For{$i \leftarrow 0$ to $2^r - 1$}{
+%         $Val \leftarrow Bucket[i]$\\
+%         $Bucket[i] \leftarrow Sum$\\
+%         $Sum \leftarrow Sum + Val$
+%     }
+%     \tcp{\underline{FIND TARGET BUCKET WITH EARLY STOP}\; }
+%     $STOP \leftarrow False$\\
+%     \For{$i \leftarrow 0$ to $2^r - 1$}{
+%         \If{$Bucket[i] = AllNum$}{
+%             $STOP \leftarrow True$\\
+%             \textbf{break}\;
+%         }    
+%         \If{$Bucket[i] \ge k$}{
+%             $POS \leftarrow Bucket[i]$\;\\
+%             \textbf{break}\;
+%         }
+%     }
+%     \If{$STOP = True$}{
+%         \textbf{break}\;
+%     }
+
+%     \tcp{\underline{FILTER}\; }
+%     \For{$j \leftarrow 0$ to $N - 1$}{
+%         \If{$D[j] \ge POS$}{
+%             \textbf{continue}\;
+%         }
+%         $A \leftarrow Bucket[D[j]]$\\
+%         $R[A] \leftarrow K[j]$\\
+%         $Bucket[D[j]] \leftarrow A + 1$
+%     }
+%     \caption{CountingSort Algorithm}
+% \end{algorithm}
+
+
 \subsection{Cluster级优化}
 MTP Cluster 架构如图~\ref{fig:cluster_arch}所示，MTP Cluster 由 4 个 MLU Core 和一个 Memory Core 组成，
 是 MTP 架构中的最小执行单元。每个 MLU Core 是具备完整计算、IO 和控制功能的处理器核心，
