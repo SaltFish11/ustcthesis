@@ -24,7 +24,7 @@
 核心计算阶段由设备端（AI处理器）负责完成，其主要任务是依据Top - k算子的原理，借助设备端的硬件特性开展高效的并行计算。在传统的CPU环境中，Top - k查询算法通常依赖于单线程或少量线程进行处理，计算效率较低。而在AI处理器中，凭借硬件的向量化计算指令，能够在多个计算单元上并行执行相同操作，从而大幅提升计算速度。故而，设备端的高效计算构成了整个Top - k查询计算流程的核心所在。
 
 通过上述分工，充分发挥了 AI 处理器的硬件优势，显著提高了 Top-k 算法计算效率。在大规模数据处理场景中，该计算流程能够快速筛选出前 k 个最大（或最小）元素，满足数据处理需求。在深度学习领域，可用于模型训练中的数据筛选与特征提取等操作，加速模型训练和推理进程。
-图~\ref{fig:topk}展示了计算流程。
+图~\ref{fig:topk}展示了本文Top-k算子的计算流程。
 \begin{figure}[ht]
     \centering
     \includegraphics[width=0.3\textwidth]{算子整体流程.jpg}
@@ -39,8 +39,9 @@
 \section{主机端任务分析}
     \subsection{接口设计及参数检查}
     拟设计实现的 Top-k 算子输入参数要求如表\ref{tab:input_tab}所示，其中，
-    input参数表示输入的张量（tensor），其往往含有多个维度。根据所使用的数据类型，输入张量的元素值可以为整数或浮动小数，
-    支持不同的精度（int32 为整数，float32 为浮动小数）。dim 表示待操作的维度，k 表示需要得到的前 k 大/小的值。假设 input 数据总共有 n 个维度，
+    input参数表示输入的张量（tensor），其往往含有多个维度。根据所使用的数据类型，
+    输入张量的元素值可以为整数或浮点数，
+    支持不同的精度（int32 为整数，float32 为浮点数）。dim 表示待操作的维度，k 表示需要得到的前 k 大/小的值。假设 input 数据总共有 n 个维度，
     并且每个维度的大小为 $\{ x_{0}, x_{1}, \dots, x_{i}, \dots, x_{n-1} \}$，
     则 dim 和 k 所需要满足的数量关系如下：
 
@@ -50,7 +51,7 @@
         设 dim = i，则： $0 \leq k \leq x_{i}$
     \end{center}
     对于largest，其为bool类型，为true时表示取最大的k个值，为false时，取最小的k个值。
-    对于sorted，其为bool类型，为true时表示结果需要排序，为false时，不需要将结果进行排序。
+    对于sort，其为bool类型，为true时表示结果需要排序，为false时，不需要将结果进行排序。
     \begin{table}
         \centering
         \caption{输入参数表}
@@ -63,7 +64,7 @@
           dim & int32   & 表示对第dim维度进行操作            \\
           k   & int32   & 表示取排行前k的数据              \\
           largest & bool   & 默认为true,控制取最大还是最小的值            \\
-          sorted & bool   & 默认为true，控制是否需要排序            \\
+          sort & bool   & 默认为true，控制是否需要排序            \\
           
           \bottomrule
         \end{tabular}
@@ -93,19 +94,23 @@
     \paragraph{设备端数据摆布方式分析}
     
 
-    Top-k算子需要支持多维度数据，可以表示如下：\(\text{dim0}\)，\(\text{dim1}\)，\(\text{dim2}\)，
-    \(\text{dim3}\)。由左到右表示维度从高到低，按照\(\text{dim}\)可以将四个维度转化为三个维度，即：
+    Top-k算子需要支持多维度数据，为方便描述，假设其有四个维度，表示如下：\(\text{dim0}\)，\(\text{dim1}\)，\(\text{dim2}\)，
+    \(\text{dim3}\)。由左到右表示维度从高到低，按照参数\(\text{dim}\)可以将
+    多维度张量（此时为四个维度）转化为三个维度，设其为：
     \(\text{left}\)，\(\text{dim}\)，\(\text{right}\)，其中，\(\text{left}\)为最高维度，
-    \(\text{dim}\)为中间维度。当\(\text{dim} = 3\)时表示对\(\text{dim3}\)维度进行Top - K查询
-    ，此时\(\text{right} = 1\)，\(\text{left} = \text{dim0}×\text{dim1}×\text{dim2}\)。
+    \(\text{dim}\)为中间维度，
+    当\(\text{dim} = 3\)时表示对\(\text{dim3}\)维度进行Top - K查询
+    ，此时\(\text{right} = 1\)，\(\text{left} = \text{dim0}×\text{dim1}×\text{dim2}\);
     当\(\text{dim} = 0\)时，表示对\(\text{dim0}\)求Top - K，则对应的\(\text{left}\)和
-    \(\text{right}\)分别为：\(1\)，\(\text{dim1}×\text{dim2}×\text{dim3}\)。
-    
-    综上所述可以将任意维度的数据抽象成一个三维张量，
+    \(\text{right}\)分别为：\(1\)，\(\text{dim1}×\text{dim2}×\text{dim3}\);
+    当\(0 < \text{dim} < 3\)时，表示对\(\text{dim}\)求Top - K，则此时left为dim前的维度的乘积，
+    right为dim后维度的乘积。
+
+    也就是说，可以将任意维度的数据抽象成一个三维张量，
     其形状为\(\text{left}\)，\(\text{dim}\)，\(\text{right}\)，其中，\(\text{dim}\)是
     待操作维度。但是当\(\text{right}≠1\)时，待
     操作维度不在最低维，这意味进行数据I/O时，将有可能浪费有限的带宽。因此，在
-    这种情况下需要针对数据后面两个维度进行转置（transpose）操作。此时张量的形
+    这种情况下需要针对数据后面两个维度进行转置（transpose）操作，此时张量的形
     状为（\(\text{left}\)，\(\text{right}\)，\(\text{dim}\)），进一步的
     ，对于Top-k核函数而言，其输入的形状可以抽象为（\(\text{left\_right}\)，\(\text{dim}\)），
     其中\(\text{left\_right}=\text{left}×\text{right}\)。当Top - k任务完成之后，输出的形
@@ -115,7 +120,7 @@
     
     \begin{figure}[ht]
         \centering
-        \includegraphics[scale = 0.6]{input_shape.jpg}
+        \includegraphics[scale = 0.55]{input_shape.jpg}
         \caption{数据维度变化流程图}
         \label{fig:input_shape}
         % \note{注：图注的内容不宜放到图题中。}
@@ -201,15 +206,38 @@
 
 \section{设备端并行算法设计与实现}
 
-\subsection{RadixSelect核函数整体设计分析}
+\subsection{Top-k整体流程设计分析}
+
+
+
+
+
 基数选择（RadixSelect）是基数排序的一种应用，用于在一组数据中找到具有特定排名的元素。
 其算法过程与基数排序算法相似，但与之不同的是，其在迭代的过程中，RadixSelect仅对包含
-第 k 大元素的数进行基数排序，达到减少问题规模的效果。
+第 k 大元素的数进行基数排序，达到减少问题规模的效果，但是其输出结果并不是有序的，因此
+我们需要对RadixSelect的输出结果根据参数sort来判断是否有必要进行排序。
+另外，考虑到国产AI处理器的I/O特点，我们需要根据dim与输入的维度信息关系，
+来判断是否有必要对输入/输出进行转置操作。因此，设备端的计算流程如下图~\ref{fig:shebeiliucheng}
+所示：
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[scale = 0.85]{shebeiliucheng.png}
+    \caption{设备端整体流程图}
+    \label{fig:shebeiliucheng}
+    % \note{注：图注的内容不宜放到图题中。}
+\end{figure}
+
+
+对于Transpose核函数和Sort核函数，可以选用国产AI平台现阶段
+已开发好的核函数进行计算;对于RadixSelect核函数，
+其主要依托上述提到的RadixSelect算法并结合国产AI处理器的体系结构进行并行设计实现。
+
 在RadixSelect算法中，一个数位（digit）对应着一个元素二进制表示中
 的一组连续的\(b\)位。该算法从最高有效数位（most significant digit）到最低有效
 数位（least significant digit）处理一个元素，每次迭代处理一个数位。
-对于一个由\(r\)位组成的元素，需要进行\(\lceil\frac{r}{b}\rceil\)次迭代。
-每次迭代主要包含四步：
+对于一个由\(r\)位组成的元素，需要进行\(\lceil\frac{r}{b}\rceil\)次迭代
+，设为CountingSort，其主要包含四步：
 1.求取直方图（HISTOGRAM-KEYS） 
 2.扫描桶 （SCAN-BUCKETS） 
 3.找到目标桶（FIND-TARGET-BUCKET） 
@@ -258,6 +286,13 @@
 能有效减少计算时间。特别是在国产AI处理器等并行计算设备上，RadixSelect 算法可以充分利用设备的并行计算
 能力，将数据分配到多个计算单元上同时处理。目前RadixSelect算法实现过程中，应当解决的主要问题为以下两个方面：
 \begin{enumerate}
+    
+    \item{并行方案}:
+    Top-k的问题适用场景极为宽泛，不同的输入往往对应着不同的实现。在较大数据规模下，
+    对于较大的k值，由于片上内存有限，需要将中间计算结果保存在片外空间上。
+    而对于较小的 k 值，可以将Top-k 元素常驻在片上内存中，快速响应后续的比较和更新操作，减少对内存的访问延迟。
+    因此，本文根据k值与片上空间的大小关系进行了两种并行方案的设计与实现，具体见3.3.2和3.3.3。
+
     \item{数据类型和正负性}:
     RadixSelect需要从最高位来获取输入数据的数位（digit），需要数据满足“位数越高，数值大小的权重越高”这一规律。
     然而各个类型数据在计算机内存中的存储形式，并不是按照这一形式进行存放的。
@@ -266,20 +301,13 @@
     同样的，对于大部分有符号数据类型而言，其在内存中的存储形式同样违反“位数越高，数值大小的权重越高”这一规律。
     因此需要根据不同数据类型的正负数的存储规则对输入数据进行预处理操作。具体分析见3.3.4。
 
-    \item{并行方案}:
-    Top-k的问题适用场景极为宽泛，不同的输入往往对应着不同的实现。在较大数据规模下，
-    对于较大的k值，由于片上内存有限，需要将中间计算结果保存在片外空间上。
-    而对于较小的 k 值，可以将Top-k 元素常驻在片上内存中，快速响应后续的比较和更新操作，减少对内存的访问延迟。
-    因此，本文根据k值与片上空间的大小关系进行了两种并行方案的设计与实现，具体见3.3.2和3.3.3。
-
-
 \end{enumerate}
 
 \subsection{小k场景下的RadixSelect的并行设计及实现}
-假设输入为无符号整型数据（unsigned）且求取Top-k小元素。
+为了方便问题的描述，假设输入为无符号整型数据（unsigned）且求取Top-k小元素。
 考虑到此时k值较小，中间结果可存放在NRAM空间上。
   根据前文的分析，对于input-shape = [A,B]，我们可以根据A的大小来确定Job的数量，单个Job处理
-  输入的一行，各个Job负责的数据范围，可以根据TaskIdx，TaskIdy和TaskDim等变量进行数据与Task之间的
+  输入的一行，各个Job负责的数据范围，可以根据TaskIdx，TaskIdy和TaskDim等内置变量进行数据与Task之间的
   映射。在对更复杂的场景进行分析之前，我们在此场景下，先进行单核版本的RadixSelect算法的设计和实现。
   即假设此时单个MLU-Core可以一次性放下input的一行，因此，此时的Job类型可以设置为Block。
   其单核实现如下所示：
@@ -316,13 +344,13 @@
 \end{enumerate}
 
 单核Top - K适用于中小规模的Top - K查询，具备处理多维度数据的能力，可应用于网络模型的数据处理。不过，它本身并未设计针对多核数据的处理逻辑。
-当网络模型需要进行多核操作时，需结合其他算子。具体而言，在调用Top - K算子前，要先利用基于深度学习
+当数据规模较大时，往往需结合其他算子。具体而言，在调用Top - K算子前，要先利用基于深度学习
 处理器的split算子对输入规模进行划分。完成各核上的单核操作后，再通过concat算子对返回的数据进行最终
 规模处理。此后，便可继续后续的数据传递和处理工作，
 单核在多核运行环境下的执行顺序如下图\ref{fig:duohe_split}所示。
 \begin{figure}[ht]
     \centering
-    \includegraphics[scale = 0.6]{multicore_data_split.jpg}
+    \includegraphics[scale = 0.75]{multicore_data_split.jpg}
     \caption{多核拆分示意图}
     \label{fig:duohe_split}
     % \note{注：图注的内容不宜放到图题中。}
@@ -412,7 +440,7 @@ $Buckets[i][j]$代表在进行SCAN-BUCKETS处理后，$A$中元素最终在结�
 \begin{figure}[ht]
     \centering
     \includegraphics[scale = 0.6]{process_digits.jpg}
-    \caption{并行radix-select的扫描步骤}
+    \caption{并行RadixSelect的扫描步骤}
     \label{fig:digits}
     % \note{注：图注的内容不宜放到图题中。}
 \end{figure}

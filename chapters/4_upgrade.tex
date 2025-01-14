@@ -179,39 +179,9 @@ Top-k 算 子计算效率优化的过程，就是将其计算任务映射到不�
  效率优化工作。
 
 \subsection{Core级优化}
-MLU-Core 内具有多条独立执行的指令流水线（以下简称为 PIPE），分别 为负责标量运算的 ALU-PIPE、负责向量运算的VFU-PIPE、
-负责张量运算的TFU-PIPE、负责片上和片外数据搬移的 IO-DMA\ PIPE 和负责片上数据搬移的Move-DMA PIPE。如图~\ref{}所示，Inst-
-Cache 中的一段指令序列顺序开始执行后， 经过分发和调度被分配进了多个 PIPE 队列中，进入 PIPE 前指令是按顺序执行 译码的，而进
-入不同计算或访存队列后则由硬件解决寄存器重命名或读写依赖。 这意味着不同计算或者访存类型指令是可以并行执行的。
-例如每次迭代的开始，需要用到 bang\_write\_value 指令对Buckets数组进行初始化。
-而在bang\_write\_value指令 Compute 流执行，同样可实现给指定内存段赋 初值的
- memset\_nram 指令则在 Move 流执行。因此通过使用 memset\_nram 指令替代
- bang\_write\_value，可以实现向量运算与内存段赋初值操作并行执行，
- 减少总的指令运行耗时。
-\begin{figure}[ht]
-    \centering
-    \includegraphics[scale = 0.5]{inst_queue.png}
-    \caption{多队列指令流水线}
-    \label{fig:inst_queue}
-    % \note{注：图注的内容不宜放到图题中。}
-\end{figure}
 
-另外，BC 编程语言还提供了多个指令融合操作接口，这类接 口不仅可以减少数据中转和 NRAM 空间
-占用，还可以利用硬件的指令融合功能 达到更高的性能。在整个 Top-k 算子的计算流程中，
-先后多次使用了bang\_mul、bang\_add 和 bang\_sub 等向量操作指令。
-通过使用bang\_fusion 指令融合接 口，可以实现三个输入向量的乘加、乘减、加乘、
-减乘、减减、加加、加减、减加运 算。从而进一步减少计算过程中用到的指令数量，提升算
-子的性能。如图~\ref{fig:fusion}所 示，使用融合指令替换原指令组合后，可以在一条指令时间内完成乘
-加操作。在RadixSelect实现阶段，数据预处理阶段满足指令融合的要求，因此在此阶段可以进行指令融合。
-\begin{figure}[ht]
-    \centering
-    \includegraphics[scale = 0.6]{fusion.jpg}
-    \caption{指令融合示例图}
-    \label{fig:fusion}
-    % \note{注：图注的内容不宜放到图题中。}
-\end{figure}
-
-最后，对于RadixSelect算法而言，在特定的情况下，数据可能会落入所有的桶中，这将会使得
+\paragraph{算法优化}
+对于RadixSelect算法而言，在特定的情况下，数据可能会落入所有的桶中，这将会使得
 FILTER阶段的操作变得没有意义，因为此时不存在无效数据。因此在FIND TARGET BUCKET阶段，
 可以对各个桶进行检查：当桶中的数据等于本轮迭代所有数据个数时，直接进入到下一次迭代。
 这将有效的减少冗余计算。更改后的FIND TARGET BUCKET阶段伪代码片段如下：
@@ -295,6 +265,62 @@ FILTER阶段的操作变得没有意义，因为此时不存在无效数据。�
 %     }
 %     \caption{CountingSort Algorithm}
 % \end{algorithm}
+\paragraph{预处理计算优化}
+    对于Top-k算子而言，RadixSelect算法仅将Top-k 大/小的值筛选出来。对于内部排序
+    还需要根据sorted参数来决定是否使用RadixSort算子进行计算。
+    而正负性等数值特性对于RadixSort和RadixSelect的影响是相同的，
+    因此通过将RadixSelect和RadixSort的
+    预处理方式进行对齐，能够有效的减少指令数目，提高Top-k算子的计算效率。
+
+    通过前文的分析，我们总结出RadixSort和RadixSelect预处理方案如下：
+    \begin{enumerate}
+        \item Top-k小，整型，所有数的符号位进行取反操作。
+        \item Top-k小，浮点型，对正数进行符号位取反，对负数全部 bit 位进行取反，
+        即非负数与 0x80000000 进行位异或操作, 负数与 0xffffffff 进行位异或操作
+        \item Top-k大，整型，对所有数据的非符号位实施取反操作。
+        \item Top-k大，浮点型，数据的符号位保持不变且负数无需进行任何改动，
+        对非负数的非符号位进行取反操作。
+    \end{enumerate}
+
+    而后，根据sorted参数来判断是否需要运行RadixSort核函数。若是需要运行，此时RadixSelct
+    的输出不需要进行后处理，直接将其作为RadixSort的输入即可。
+
+
+
+\paragraph{指令流水线优化}
+MLU-Core 内具有多条独立执行的指令流水线（以下简称为 PIPE），分别 为负责标量运算的 ALU-PIPE、负责向量运算的VFU-PIPE、
+负责张量运算的TFU-PIPE、负责片上和片外数据搬移的 IO-DMA\ PIPE 和负责片上数据搬移的Move-DMA PIPE。如图~\ref{}所示，Inst-
+Cache 中的一段指令序列顺序开始执行后， 经过分发和调度被分配进了多个 PIPE 队列中，进入 PIPE 前指令是按顺序执行 译码的，而进
+入不同计算或访存队列后则由硬件解决寄存器重命名或读写依赖。 这意味着不同计算或者访存类型指令是可以并行执行的。
+例如每次迭代的开始，需要用到 bang\_write\_value 指令对Buckets数组进行初始化。
+而在bang\_write\_value指令 Compute 流执行，同样可实现给指定内存段赋 初值的
+ memset\_nram 指令则在 Move 流执行。因此通过使用 memset\_nram 指令替代
+ bang\_write\_value，可以实现向量运算与内存段赋初值操作并行执行，
+ 减少总的指令运行耗时。
+\begin{figure}[ht]
+    \centering
+    \includegraphics[scale = 0.5]{inst_queue.png}
+    \caption{多队列指令流水线}
+    \label{fig:inst_queue}
+    % \note{注：图注的内容不宜放到图题中。}
+\end{figure}
+
+\paragraph{指令融合优化}
+BC 编程语言还提供了多个指令融合操作接口，这类接 口不仅可以减少数据中转和 NRAM 空间
+占用，还可以利用硬件的指令融合功能 达到更高的性能。在整个 Top-k 算子的计算流程中，
+先后多次使用了bang\_mul、bang\_add 和 bang\_sub 等向量操作指令。
+通过使用bang\_fusion 指令融合接 口，可以实现三个输入向量的乘加、乘减、加乘、
+减乘、减减、加加、加减、减加运 算。从而进一步减少计算过程中用到的指令数量，提升算
+子的性能。如图~\ref{fig:fusion}所 示，使用融合指令替换原指令组合后，可以在一条指令时间内完成乘
+加操作。在RadixSelect实现阶段，数据预处理阶段满足指令融合的要求，因此在此阶段可以进行指令融合。
+\begin{figure}[ht]
+    \centering
+    \includegraphics[scale = 0.47]{fusion.jpg}
+    \caption{指令融合示例图}
+    \label{fig:fusion}
+    % \note{注：图注的内容不宜放到图题中。}
+\end{figure}
+
 
 
 \subsection{Cluster级优化}
