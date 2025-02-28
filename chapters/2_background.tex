@@ -23,7 +23,7 @@ RadixSelect与最高有效位基数排序 [14]相似，依据元素的数位特�
 割为$b$位数字，那么最多仅需$\left\lceil\frac{r}{b}\right\rceil$次迭代。
 因此，无论是平均情况还是最坏情况，其时间复杂度均为
 $O(\left\lceil\frac{r}{b}\right\rceil N)$。
-相比之下，QUICKSELECT在最坏情形下，每次迭代仅能移除一个元素。由此，
+相比之下，QuickSelect算法在最坏情形下，每次迭代仅能移除一个元素。由此，
 处理大约$N$个元素时，$N$次迭代将导致其最坏情况时间复杂度达到$O(N^{2})$。
 
 \item 在GPU上，当采用8位或11位数字（分别对应256个或2048个桶）时，RadixSelect能展现出高度的
@@ -158,7 +158,7 @@ Job之间一般也是逻辑独立的。一个Job至少包含一个Task，具体�
 
 
 \section{面向深度学习的处理器的pytorch框架}
-为了验证Pytorch
+
 为支持国产AI处理器，寒武纪定制了开源人工智能编程框架PyTorch（以下简称Cambricon PyTorch）。
 Cambricon PyTorch借助PyTorch自身提供的设备扩展接口将MLU后端库中所包含的算子操作动态注册到PyTorch中，MLU后端库可处理MLU上的张量和算子的运算。Cambricon PyTorch会基于Cambricon CNNL库在MLU后端实现一些常用算子，并完成一些数据拷贝。
 为了能在Torch模块方便使用MLU设备，Cambricon PyTorch在PyTorch后端进行了以下扩展：

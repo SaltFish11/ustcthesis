@@ -39,10 +39,11 @@
 \section{主机端任务分析}
     \subsection{接口设计及参数检查}
     拟设计实现的 Top-k 算子输入参数要求如表\ref{tab:input_tab}所示，其中，
-    input参数表示输入的张量（tensor），其往往含有多个维度。根据所使用的数据类型，
+    keys 表示输入的张量（tensor），其往往含有多个维度。根据所使用的数据类型，
     输入张量的元素值可以为整数或浮点数，
-    支持不同的精度（int32 为整数，float32 为浮点数）。dim 表示待操作的维度，k 表示需要得到的前 k 大/小的值。假设 input 数据总共有 n 个维度，
-    并且每个维度的大小为 $\{ x_{0}, x_{1}, \dots, x_{i}, \dots, x_{n-1} \}$，
+    支持不同的精度（int32 为整数，float32 为浮点数），
+    而 values 是挑选出的Top-k元素的下标。dim 表示待操作的维度，k 表示需要得到的前 k 大/小的值。
+    假设 keys 数据总共有 n 个维度，并且每个维度的大小为 $\{ x_{0}, x_{1}, \dots, x_{i}, \dots, x_{n-1} \}$，
     则 dim 和 k 所需要满足的数量关系如下：
 
     \begin{center}
@@ -60,7 +61,8 @@
           \toprule
           参数名称   & 数据类型                                       & 描述                          \\
           \midrule
-          input & int32/float32 & 输入tensor，可以是任意维度                      \\
+          keys & int32/float32 & 输入tensor，可以是任意维度                      \\
+          values & int32/uint32 & 输入tensor，可以是任意维度                      \\
           dim & int32   & 表示对第dim维度进行操作            \\
           k   & int32   & 表示取排行前k的数据              \\
           largest & bool   & 默认为true,控制取最大还是最小的值            \\
@@ -72,7 +74,7 @@
 
     输出参数表如表\ref{tab:output_tab}所示。其中，
     output是最终的输出 tensor，包含通过 Top-k 查询计算得到的Top-k 大/小值。其数据类型可以是 int32 或 float32，具体取决于输入数据的类型以及计算要求。
-    index是与 output 对应的下标。它指示从输入数据的第dim维度的哪个位置获取的 Top-k 元素。
+    output\_values是与 output 对应的下标。它指示从输入数据的第dim维度的哪个位置获取的 Top-k 元素。
     这在需要返回结果的源数据位置时非常有用，尤其是在需要追踪或处理原始数据时。
     \begin{table}
         \centering
@@ -82,8 +84,8 @@
           \toprule
           参数名称   & 数据类型                                       & 描述                          \\
           \midrule
-          output & /int32/float32 & 输出tensor                 \\
-          index   & int32/uint32   & 输出数据在排序维度对应的下标              \\
+          output &  int32/float32 & 输出tensor                 \\
+          output\_values   & int32/uint32   & 输出数据在排序维度对应的下标              \\
           \bottomrule
         \end{tabular}
     \end{table}
@@ -94,7 +96,8 @@
     \paragraph{设备端数据摆布方式分析}
     
 
-    Top-k算子需要支持多维度数据，为方便描述，假设其有四个维度，表示如下：\(\text{dim0}\)，\(\text{dim1}\)，\(\text{dim2}\)，
+    Top-k算子需要支持多维度数据，考虑到DLP-M的I/O效率严重受数据在内存中摆放的连续性的影响，因此需要对输入数据进行数据摆放的预处理，以更有效的利用带宽。
+    为方便描述，假设其有四个维度，表示如下：\(\text{dim0}\)，\(\text{dim1}\)，\(\text{dim2}\)，
     \(\text{dim3}\)。由左到右表示维度从高到低，按照参数\(\text{dim}\)可以将
     多维度张量（此时为四个维度）转化为三个维度，设其为：
     \(\text{left}\)，\(\text{dim}\)，\(\text{right}\)，其中，\(\text{left}\)为最高维度，
@@ -120,8 +123,8 @@
     
     \begin{figure}[ht]
         \centering
-        \includegraphics[scale = 0.55]{input_shape.jpg}
-        \caption{数据维度变化流程图}
+        \includegraphics[scale = 0.50]{input_shape.jpg}
+        \caption{数据维度变化图}
         \label{fig:input_shape}
         % \note{注：图注的内容不宜放到图题中。}
     \end{figure}
@@ -218,7 +221,7 @@
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[scale = 0.85]{shebeiliucheng.png}
+    \includegraphics[scale = 0.8]{shebeiliucheng.png}
     \caption{设备端整体流程图}
     \label{fig:shebeiliucheng}
     % \note{注：图注的内容不宜放到图题中。}
@@ -238,7 +241,7 @@
 2.扫描桶 （SCAN-BUCKETS） 
 3.找到目标桶（FIND-TARGET-BUCKET） 
 4.目标元素筛选（FILTER）
-其伪代码见算法~\ref{alg:Counting}。
+，其伪代码见算法~\ref{alg:Counting}。
 
 \begin{algorithm}
     \SetAlgoNoLine 
@@ -301,45 +304,103 @@
 
 \subsection{小k场景下的RadixSelect的并行设计及实现}
 为了方便问题的描述，假设输入为无符号整型数据（unsigned）且求取Top-k小元素。
-考虑到此时k值较小，中间结果可存放在NRAM空间上。
-  根据前文的分析，对于input-shape = [A,B]，我们可以根据A的大小来确定Job的数量，单个Job处理
-  输入的一行，各个Job负责的数据范围，可以根据TaskIdx，TaskIdy和TaskDim等内置变量进行数据与Task之间的
-  映射。在对更复杂的场景进行分析之前，我们在此场景下，先进行单核版本的RadixSelect算法的设计和实现。
-  即假设此时单个MLU-Core可以一次性放下input的一行，即B此时相对较小，Job类型设置为Block即可。
-  其单核实现如下：
-  \paragraph{单核实现}
+考虑到此时k值较小，中间结果可完全存放在NRAM空间上。在对更复杂的场景进行分析之前，我们在此场景下，先进行单核版本的RadixSelect算法的设计和实现。
+即假设此时单个MLU-Core上的片上内存（Nram空间）可以一次性放下input的一行，即B此时相对较小，Job类型设置为Block即可。
+  
+
+
+  
+  \paragraph{单核版本}
+  根据前文的分析，对于keys-shape = [A,B]，我们可以根据A的大小来确定Job的数量，
+  单个Job处理输入的若干行，即每个Job处理A\_split行，若是Job的数量小于A的数量，此时单个Job内可使用循环对A\_split行数据进行依次处理，
+  而各个Job负责的数据范围，可以根据TaskIdx，TaskIdy和TaskDim等内置变量进行数据与Job之间的
+  映射。由于此场景下Job类型为Block，Job只有一个Task，因此Job与Task之间不存在进一步的数据拆分。
+  其针对输入数据的拆分示意图如图~\ref{fig:data_split_lk}所示。
+  \begin{figure}[ht]
+    \centering
+    \includegraphics[scale = 0.5]{data_split_lk.png}
+    \caption{数据拆分示意图}
+    \label{fig:data_split_lk}
+    % \note{注：图注的内容不宜放到图题中。}
+\end{figure}
+
+我们知道DLP-M具有多级层次存储，且针对不同的层级的存储空间，对于MLU-Core而言其I/O效率和可见性并不一样。在进行数据拆分之后，我们需要进一步设计
+各变量的在各存储上的空间划分。结合具体的实现过程，
+GDRAM的空间划分如图~\ref{fig:gdr_split_lk}所示。
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[scale = 0.5]{gdr_split_lk.png}
+    \caption{GDRAM空间划分示意图}
+    \label{fig:gdr_split_lk}
+    % \note{注：图注的内容不宜放到图题中。}
+\end{figure}
+其中，图中keys所指空间用以存储来自主机端内存的keys数据，values所指空间用以存储来自主机端内存的values数据，
+output\_keys和output\_values是最后的输出结果。
+workspace所指空间是各Job正常工作时的辅助空间，用以存储辅助变量。
+NRAM的空间划分如图~\ref{fig:nram_split_lk}所示。
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[scale = 0.5]{nram_split_lk.png}
+    \caption{NRAM空间划分示意图}
+    \label{fig:nram_split_lk}
+    % \note{注：图注的内容不宜放到图题中。}
+\end{figure}
+
+
+\begin{table}
+    \caption{NRAM空间变量作用说明表}
+    \centering
+    \begin{tabular}{lcc}
+    \toprule
+    变量名称 & 长度 & 作用 \\
+    \midrule
+    keys\_nram & dealnum\_percore & 存储keys \\
+    values\_nram & dealnum\_percore & 存储values \\
+    keys\_temp & dealnum\_percore & 存储keys当前循环的数位 \\
+    aux0\_nram & dealnum\_percore & 存储当前轮次筛选出来的keys \\
+    aux1\_nram & dealnum\_percore &  存储当前轮次筛选出来的values\\
+    local\_counts & bucket\_num + 1 & 存储前缀和 \\
+    hist\_local & bucket\_num & 存储keys的当前digit，落在各个桶中的个数（直方图） \\
+    mask\_nram & dealnum\_percore & 掩码向量，表示当前桶中的keys的是否在当前桶中 \\
+    \bottomrule
+    \end{tabular}
+    \label{tab:nram_var}
+\end{table}
+
+% 比如，对于GDRAM而言，其对于各个MLU-Core均可见;对于SRAM而言，其对于同一个Cluster内各个MLU-Core均可见，不同Cluster之间不能互相访问;
+% 对于NRAM和WRAM而言，是MLU-Core私有存储空间，各个MLU-Core不能互相访问彼此的NRAM和WRAM空间。
+\subparagraph{并行实现}
+针对核心计算阶段的并行化设计，本文采用多级存储协同与向量化指令优化相结合的策略，具体实现流程如下：
+
 \begin{enumerate}
-\item {初始化}
+\item \textbf{存储资源初始化}:
+基于MLU架构的存储层次特性，首先在NRAM空间内执行数据划分策略：根据MLU-Core的物理约束条件，为各计算任务分配私有NRAM存储区域，并建立对应的数据映射关系。初始化位掩码变量$\mathtt{bit\_mask}=0xF0000000$，该参数通过动态右移操作实现迭代过程中数位特征的逐次提取，其偏移量由当前迭代轮次$t$决定，即$\mathtt{bit\_mask} \gg 4(t-1)$。
 
-  首先，需要初始化一个名为\(Buckets\)的数组，其大小设置为\(2^{digit}\)，并且将数组中的所有元素初始化为\(0\)。
-  其中digit为读取数据的位数，这个\(Buckets\)数组的主要作用是用于统计数组\(D\)中每个元素出现的次数。
-  初始化变量bit\_mask=0xF0000000，此变量用于获取输入中各个元素数位，需要根据当前迭代论次进行调整右移
-  。初始化数组masks，数组长度与输入长度保持一致，此数组是为了辅助数据过滤。
-  \item {构建直方图}
+\item \textbf{直方图构建}:
+采用$\mathtt{bang\_band\_scalar}$向量化位操作指令，对$\mathtt{keys\_nram}$进行位与运算，提取当前数位特征至$\mathtt{keys\_temp}$缓冲。随后通过$\mathtt{bang\_histogram}$指令的并行归约能力，统计$\mathtt{keys\_temp}$各元素的频率分布，生成局部直方图$\mathtt{hist\_local}$。此过程通过寄存器级并行实现零拷贝计算，显著降低内存访问延迟。
 
-使用bang\_band\_scalar向量指令获取当前迭代论次中各数据的数位存于\(D[j]\)中。
-而后利用bang\_histogram向量指令，遍历输入数组\(D\)中的每一个元素，统计\(D\)中各元素出现的个数，记录在\(Buckets\)中。
-\item {扫描桶}
-遍历Buckets数组，计算出每个桶的累积和，由于桶的数量较小，由于使用标量串行运算，因此此步骤可能会成为即性能瓶颈，但可以通过将digit设置为较小的值进行避免。
+\item \textbf{前缀和计算}:
+基于$\mathtt{bang\_presum}$指令的并行扫描特性，对$\mathtt{hist\_local}$执行前缀和操作，
+生成桶边界索引$\mathtt{local\_counts}$。该指令可在$O(\log n)$时间复杂度内完成全局累积统计，为后续桶选择提供决策依据。
 
-\item {找到目标桶}
+\item \textbf{桶搜索}:
+通过线性搜索算法遍历$\mathtt{local\_counts}$数组，求解满足$ \exists i \in [0,b),\ \mathtt{local\_counts}[i] < k \leqslant \mathtt{local\_counts}[i+1] $的临界桶索引$i$，并将目标桶键值记录至$\mathtt{key\_bin}$。该过程引入提前终止机制，当检测到$k-\mathtt{local\_counts}[i] \leqslant \delta$时终止搜索（$\delta$为预设阈值），有效降低分支预测开销。
 
-再次遍历\(Bucket\)数组，目的是找到第一个满足\(Bucket[i] \le k\)且\(Bucket[i+1] \geq k\)的桶。
-将桶的下标i使用key\_bin记录下来。
-
-\item{过滤}
-
-  在此阶段，会再次遍历数组\(D\)，目的是将数组\(D\)中的前\(k\)大元素挑选出来，
-  并放入结果数组\(R\)。
-  首先，使用向量指令bang\_le将小于key\_bin的D元素使用mask记录下来。
-  而后使用向量指令bang\_filter指令利用input和mask数组将数据过滤出来，保存在最终结果output中。
-  然后，使用向量指令bang\_eq将等于key\_bin的D元素使用mask记录下来，同时更新k值。
-  而后使用向量指令bang\_filter指令利用input和mask数组将数据过滤出来，保存在input中。作为下一轮次
-  迭代的输入。
-
+\item \textbf{过滤}:
+\begin{itemize}
+\item 第一级过滤：应用$\mathtt{bang\_le}$指令生成掩码$\mathtt{mask\_nram}$，标记$\mathtt{keys\_temp}$中值小于$\mathtt{key\_bin}$的位域。通过$\mathtt{bang\_filter}$指令配合$\mathtt{mask\_nram}$，将$\mathtt{keys\_nram}$与$\mathtt{values\_nram}$的匹配元素存入$\mathtt{aux0\_nram/aux1\_nram}$，同时使用$\mathtt{bang\_count}$统计保留元素数$k'$，更新$k \leftarrow k - k'$。
+\item 第二级过滤：采用$\mathtt{bang\_eq}$指令定位等于$\mathtt{key\_bin}$的元素，通过$\mathtt{bang\_filter}$进行选择性保留，并将结果回写至$\mathtt{keys\_nram/values\_nram}$作为下一迭代输入。
+\end{itemize}
 \end{enumerate}
 
-单核Top-k算子适配于处理中等或较小的数据规模，并具备处理多维数据的功能，
+\textbf{优化特性分析}：本实现方案通过（1）NRAM私有化存储消除访存竞争；
+（2）向量化指令集提升SIMD效率；
+（3）两级过滤降低分支粒度，最终达成计算密度与存储带宽的平衡优化。
+实验表明该设计可使Top-K选择算子相较于原版本获得明显的加速比提升，并领先NVIDIA A100 GPU的表现效果。（详见第5章评测部分）。
+
+上述所介绍的算法主要处理中等或较小的数据规模，同时具备处理多维数据的功能，
 这使其在网络模型数据处理中尤为有效。然而，该算子并未直接为多核并行处理提供内置逻辑。
 对于较大的数据规模，需要配合其他特定算子实施处理策略。具体操作流程包括：在执行Top-k算子
 之前，首先应用基于深度学习处理器的 Split 算子，对数据集进行适当划分，
@@ -360,7 +421,7 @@ Split和 Concat 操作是I/O类型算子，也就是说单核 RadixSelect 算法
 执行，势必会引入 Split 和 Concat 的额外时间开销，在某些极端的场景下，这可能会成为性能瓶颈。
 
 
-\paragraph{多核实现}
+\paragraph{多核版本}
 由于单核RadixSelect的整个操作都是在NRAM空间上进行，需要其输入，输出和各种中间变量的内存容量大小总和
 不能超过NRAM的空间大小（即512kb），所以对B的大小要求比较严格（数量级在$10^5$）。
 而若是想处理更大规模的数据（B较大时），则需要在深度学习框架侧
@@ -465,7 +526,8 @@ X =
 第一阶段，第三阶段和第四阶段（HISTOGRAMKEYS ， FIND-TARGET-BUCKET和 FILTER）时，
 都在自己的局部数据上进行工作，从而解除所有依赖项。
 但需要注意到，为了保证结果的正确性，第三阶段（ SCAN-BUCKETS ）将必须进行修改。因为如果
-每个处理器仅扫描自己的本地桶，将仅仅只能得到局部数据的Top-k结果，导致结果错误。而通过分析我们发现，
+每个处理器仅扫描自己的本地桶，将仅仅只能得到局部数据的Top-k结果，导致结果错误。
+而通过分析我们发现，
 $Buckets[i][j]$代表在进行SCAN-BUCKETS处理后，$A$中元素最终在结果$R$中的偏移位置，
 具体关系见下图~\ref{fig:digits}。
 \begin{figure}[ht]
@@ -487,57 +549,196 @@ $Buckets[i][j]$代表在进行SCAN-BUCKETS处理后，$A$中元素最终在结�
     \label{equ:buckets}
 \end{equation}
 也就是说，偏移量是所有处理器中小于 $j$ 的数位总数，再加上小于 $i$ 的处理器中数位等于 $j$ 的数量。
-这个总和可以通过将$Buckets$矩阵按列优先顺序展开，
-然后对展开后的矩阵执行 “SCAN - BUCKETS” 操作来进行计算。同时，找到目标桶这一阶段，Bucket数组中，仅第一行中
-的数据代表着全局的前缀信息，因此仅需要Core0进行这一阶段的主要任务即可。
-%   在并行实现中，划分操作分以下几步：
-%   \begin{enumerate}
-%       \item 使用多个处理器计算标记数组\(B\)，每个处理器负责数组的一部分。
-%       \item 使用并行扫描技术计算前缀和\(P\)，其时间复杂度为\(O(\log n)\)。
-%       \item 根据前缀和数组\(P\)，每个处理器独立将元素从输入数组\(A\)复制到目标数组\(L\)或\(R\)。
-%   \end{enumerate}
-在并行实现中，主要工作流程分为以下几步：
-\begin{enumerate}
-    \item 对于输入数据（二维Tensor），将数据按照行进行切分，每个Job负责数据的若干行，
-    而后每个Job对所分配的行依次处理。
-    \item 对于Job正在处理的某一行数据而言，由于数据量较大，因此采用多核进行计算（即此时Job类型为UnionX）。因此需要将整行数据平均分到各个处理器上。
-    \item 在单核上，由于片上空间有限，因此需要将局部数据进一步划分成repeat段，循环依次load到片上进行操作，统计出局部前缀和数组\(P\_local\)。
-    \item 根据\(P\_local\)，按照前文分析计算出全局前缀和数组\(P\)。
-    \item 根据P，让Core0执行算法的第四阶段（FIND\ TARGET\ BUCKET），找到k\_bins。
-    \item 根据k\_bin和P，执行过滤操作。将k\_bin之前的数据复制到输出所在的内存，并记录好offset。而后将k\_bin中的数据，作为下一次迭代的输入。
-\end{enumerate}
+这个总和可以通过将$Buckets$矩阵先按列进行求和，然后再对最后一行进行求和，这样，最后一行将存有全局的直方图信息。
+而后对此执行前缀和计算，获取全局的前缀和信息。最后将与处理器相同ID的一行，加上全局的前缀信息即可获得当前处理器的前缀和信息，
+此前缀信息可以作为FILTER阶段，将结果并行的从NRAM放回GDRAM上的偏移值。
+同时，找到目标桶这一阶段，Bucket数组中，仅Buckets的最后一行具有全局的前缀信息，主要对其进行遍历。
+上述主要介绍的是针对单行数据，多核数据的并行运算方式。
+下面进一步介绍如何将二维数据进行拆分。
+已知此时Job类型为UnionX，将会拥有多个Task。因此，我们需要对数据进行二维拆分。
+首先，每个Job负责若干行数据，即在A维度进行拆分，共拆分得到
+A\_split行数据。对于相同Job中的Task而言，进一步在B维度进行拆分，对于单行数据而言，
+一个Task得到的数据为B\_split个数。具体的数据拆分示意图如图~\ref{fig:data_split_bk}所示。
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[scale = 0.40]{data_split_bk.png}
+    \caption{数据拆分示意图}
+    \label{fig:data_split_bk}
+    % \note{注：图注的内容不宜放到图题中。}
+\end{figure}
+当B\_split数据仍然大于NRAM空间时，此时需要将B\_split进一步划分为若干段，
+使用循环依次将数据加载到NRAM空间进行处理。
+在硬件层面，上述数据拆分过程主要考虑的是各个MLU-Core应该计算哪些输入数据。
+而对于具体的实现过程，首先需要考虑输入数据和其他中间变量在各层存储中的空间划分。对于GDRAM而言，主要分为keys，values，output\_keys,
+output\_values和Workspace五块区域，各个变量的作用如下表~\ref{tab:gdram_var_bk}所示，
+\begin{table}
+    \caption{GDRAM空间变量说明表}
+    \centering
+    \begin{tabular}{lcc}
+    \toprule
+    变量名称 & 长度 & 作用 \\
+    \midrule
+    keys & A * B & 存储输入 \\
+    values & A * B & 存储下标 \\
+    output\_keys & A * B & 存储输出 \\
+    output\_values & A * B & 存储输出的下标 \\
+    workspace & A * B & 存储中间变量 \\
+    \bottomrule
+    \end{tabular}
+    \label{tab:gdram_var_bk}
+\end{table}
+其空间划分如图~\ref{fig:data_split_bk}所示,
+\begin{figure}[ht]
+    \centering
+    \includegraphics[scale = 0.45]{gdram_split_bk.png}
+    \caption{GDRAM空间拆分示意图}
+    \label{fig:data_split_bk}
+    % \note{注：图注的内容不宜放到图题中。}
+\end{figure}
+值得注意的是，此场景主要针对大规模数据。
+此时单个MLU-Core上的NRAM上的空间已经不能够完全放下一行数据，
+即单个MLU-Core所负责的数据规模远大于NRAM空间一次能够处理的数据。
+此时需要将某些中间结果暂存在GDRAM上，因此将workspace进一步划分为counts\_ddr,batch\_iter\_workspace和values\_batch\_iter\_workspace，
+如图~\ref{fig:workspace_split_bk.png}所示。
+其中counts\_ddr主要用于存储各个MLU-Core的局部前缀信息，主要达到同步信息的作用。
+batch\_iter\_workspace主要存储每次循环执行CountingSort算法时的输入，即筛选之后的输入数据。
+values\_batch\_iter\_workspace同理。
+\begin{figure}[ht]
+    \centering
+    \includegraphics[scale = 0.45]{workspace_split_bk.png}
+    \caption{Workspace空间拆分示意图}
+    \label{fig:workspace_split_bk}
+    % \note{注：图注的内容不宜放到图题中。}
+\end{figure}
+
+对于NRAM空间而言，主要涉及的变量及其作用如表~\ref{tab:nram_var_bk}所示，其空间划分如图~\ref{fig:nram_split_bk}所示。
+\begin{table}
+    \caption{NRAM空间变量说明表}
+    \centering
+    \begin{tabular}{lcc}
+    \toprule
+    变量名称 & 长度 & 作用 \\
+    \midrule
+    keys\_nram & dealnum\_percore & 存储keys \\
+    values\_nram & dealnum\_percore & 存储values \\
+    keys\_temp & dealnum\_percore & 存储keys当前循环的数位 \\
+    aux0\_nram & dealnum\_percore & 存储当前轮次筛选出来的keys \\
+    aux1\_nram & dealnum\_percore &  存储当前轮次筛选出来的values\\
+    local\_counts & bucket\_num + 1 & 存储全局前缀和 \\
+    hist\_global & bucket\_num * （corenum+1） & 用以计算全局的直方图信息 \\
+    hist\_local & bucket\_num & \parbox{8cm}{存储当前片段的keys的digit，落在各个桶中的个数（直方图），并且作为offset，将输出并行放置到GDR上} \\
+    cur\_hist & bucket\_num & \parbox{8cm}{hist\_local的累加器，用以计算当前Task所负责局部数据的直方图} \\
+    mask\_nram & dealnum\_percore & 掩码向量，表示当前桶中的keys的是否在当前桶中 \\
+    \bottomrule
+    \end{tabular}
+    \label{tab:nram_var_bk}
+\end{table}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[scale = 0.45]{nram_split_bk.png}
+    \caption{数据拆分示意图}
+    \label{fig:nram_split_bk}
+    % \note{注：图注的内容不宜放到图题中。}
+\end{figure}
+
+
+%Todo
+
+
+% \begin{enumerate}
+   
+%     \item 在单核上，由于片上空间有限，因此需要将局部数据进一步划分成repeat段，循环依次load到片上进行操作，统计出局部前缀和数组\(P\_local\)。
+%     \item 根据\(P\_local\)，按照前文分析计算出全局前缀和数组\(P\)。
+%     \item 根据P，让Core0执行算法的第四阶段（FIND\ TARGET\ BUCKET），找到k\_bins。
+%     \item 根据k\_bin和P，执行过滤操作。将k\_bin之前的数据复制到输出所在的内存，并记录好offset。而后将k\_bin中的数据，作为下一次迭代的输入。
+% \end{enumerate}
 
 \paragraph{并行实现}
-以下结合国产AI处理器的内存层次和指令，对算法的各个主要阶段进行阐述：
-\subparagraph{初始化桶}
 
-首先，需要在GDR上初始化一个名为\(Buckets\)的数组，其大小设置为\(2^{digit} \times processor\)，
-并且将数组中的所有元素初始化为\(0\)。其中digit为读取数据的位数，processor为具体任务类型
-所对应的处理器数目，这个\(Buckets\)数组的主要作用是用于统计数组\(D\)中每个元素出现的次数。
-每个处理器管理的数组大小为\(2^{digit}\)。
+以下结合国产AI处理器的内存层次和指令，对算法的各个主要阶段进行阐述：
+
+% \subparagraph{初始化}
+
+% 首先，根据表~\ref{tab:gdram_var_bk}和~\ref{tab:nram_var_bk}所示，在GDR和NRAM空间上对各个变量进行声明。
+% 并且将bin\_mask预先计算好并存储在bucket\_bin\_mask中。
+% \subparagraph{构建直方图}
+% 1.根据B和deal\_num\_percore计算出需要进行多少次循环。每次循环将GDRAM上数据加载到NRAM中（keys\_nram和values\_nram），
+% 并通过bang\_band\_scalar指令，利用bucket\_bin\_mask将当前所需要的数位存储在keys\_temp中，
+% 随后通过$\mathtt{bang\_histogram}$指令的并行归约能力，统计$\mathtt{keys\_temp}$各元素的频率分布，
+% 生成局部直方图$\mathtt{cur\_hist}$，再使用bang\_add指令将其与累加器$\mathtt{hist\_local}$相加。
+% 直到循环结束。
+% 2.将$\mathtt{hist\_local}$中的数据存储在counts\_ddr上,此时counts\_ddr将会汇总各个MLU-Core上的局部直方图信息。
+% 而后将各个MLU-Core加载counts\_ddr上数据至hist\_global+bucket\_num处。
+% 3.循环core\_nums次,使用bang\_add将n+1行数据进行累计，最后在hist\_global的最后一行数据获得全局的直方图信息。
+
+% \subparagraph{扫描桶}
+% 此时各个MLU-Core中都具有了全局直方图信息（存于hist\_global最后一行），而后使用bang\_presum求取全局的前缀和信息，存于local\_counts中。
+% 而后使用bang\_cycle\_add，将hist\_global的前bucket行和local\_counts中的数据进行相加,而后将当前MLU-Core对应的前缀和信息存于hist\_local中。
+% \subparagraph{找到目标桶}
+% 从小到大遍历$\mathtt{local\_counts}$数组，求解满足$ \exists i \in [0,b),\ \mathtt{local\_counts}[i] < k \leqslant \mathtt{local\_counts}[i+1] $的临界桶索引$i$，并将目标桶键值记录至$\mathtt{key\_bin}$。该过程引入提前终止机制，当检测到$k-\mathtt{local\_counts}[i] \leqslant \delta$时终止搜索（$\delta$为预设阈值），有效降低分支预测开销。
+
+% % 遍历\(Buckets\)数组，目的是找到第一个满足\(Buckets[i] \geq k\)的桶。
+% % 在此阶段，主要使用bang\_gt\_cycle和bang\_filter向量指令来确定目标桶的下标。
+
+% \subparagraph{过滤}
+% 1.根据B和deal\_num\_percore计算出需要进行多少次循环。每次循环需要进行以下处理：
+% a.将GDRAM上数据加载到NRAM中（keys\_nram和values\_nram），并通过bang\_band\_scalar指令，利用bucket\_bin\_mask将当前所需要的数位存储在keys\_temp中;
+% b.从0遍历到k\_bin，每次循环将当前nram上的数据利用bang\_filter指令，将keys_nram和values_nram中数据筛选到aux0_nram和aux1_nram中，
+% 而后传输到GDR上对应的输出空间并获取个数len，更新hist_local[j] += len。
+% c.将local_counts[k_bin+1]对应的数据筛选到batch_iter_workspace和values_batch_iter_workspace作为下次算法的输入。
+% 2.判断local_counts[k_bin+1]是否等于k_now，若是，将batch_iter_workspace和values_batch_iter_workspace中数据传输到output_keys和output_keys,。然后返回。
+% 3.更新k_now -= len 和 total_data_len
+\subparagraph{初始化}
+
+首先，根据表~\ref{tab:gdram_var_bk} 和表~\ref{tab:nram_var_bk}，在 GDRAM 和 NRAM 空间上进行变量的声明，并预先计算 bin\_mask，将其存储于 bucket\_bin\_mask 中，以提高后续计算的效率。
+
 \subparagraph{构建直方图}
 
-为了节省片上内存空间，不定义数组\(D\)所需要的空间，而是在此阶段使用bang\_band\_cycle指令，
-根据输入和循环所处的遍数计算出\(D\)，
-而后使用bang\_histogram统计当前统计\(D[j]\)中元素出现的个数，记录在\(Buckets\_local\)（处在NRAM空间）中。
-在处理器处理完所有的局部数据后，将\(Buckets\_local\)复制到片外内存\(Buckets\)中。
+\begin{enumerate}
+    \item 根据 B 和 deal\_num\_percore 计算需要执行的循环次数。每次循环时，将 GDRAM 上的数据加载至 NRAM（即 keys\_nram 和 values\_nram），并利用 bang\_band\_scalar 指令，通过 bucket\_bin\_mask 提取所需的数位存储于 keys\_temp 中。随后，使用 bang\_histogram 指令的并行归约能力，统计 keys\_temp 各元素的频率分布，生成局部直方图 cur\_hist，并通过 bang\_add 指令将其累加至 hist\_local。该过程持续执行直至循环结束。
+    
+    \item 将 hist\_local 的数据存储至 counts\_ddr，此时 counts\_ddr 便汇总了所有 MLU-Core 上的局部直方图信息。随后，各 MLU-Core 读取 counts\_ddr，并将数据累加至 hist\_global 的 bucket\_num 位置。
+
+    \item 遍历 core\_nums 次，利用 bang\_add 逐步累加第 n+1 行数据，最终在 hist\_global 的最后一行获得全局直方图信息。
+\end{enumerate}
 
 \subparagraph{扫描桶}
 
-此步骤主要是计算出每个桶的累积和。已知共有\(2^{digit} \times processor\)个桶，则每个MLU-Core处理\(2^{digit} \times processor\)个桶，
-算出来局部前缀和后保存在P\_local（大小为processor）中，再使用MLU-Core0对P\_local求取前缀和保存在P\_local中。
-而后每个MLU-Core再将负责的Buckets的部分加上对应的P\_local的值获得全局前缀信息。
+在完成直方图构建后，各 MLU-Core 已拥有全局直方图信息（存储于 hist\_global 的最后一行）。接下来，利用 bang\_presum 计算全局前缀和信息，并将结果存入 local\_counts。随后，使用 bang\_cycle\_add 指令，将 hist\_global 的前 bucket 行数据与 local\_counts 进行累加，并将当前 MLU-Core 对应的前缀和存入 hist\_local。
+
 \subparagraph{找到目标桶}
 
-让MLU-Core0再次遍历\(Buckets\)数组，目的是找到第一个满足\(Buckets[i] \geq k\)的桶。
-在此阶段，主要使用bang\_gt\_cycle和bang\_filter向量指令来确定目标桶的下标。
+依次遍历 local\_counts 数组，寻找满足如下条件的临界桶索引 i：
+\begin{equation}
+\exists i \in [0,b),\ \text{local\_counts}[i] < k \leqslant \text{local\_counts}[i+1]
+\end{equation}
+并将目标桶键值存入 key\_bin。此外，引入提前终止机制：当满足 $ k - \text{local\_counts}[i] \leqslant \delta $（其中 $\delta$ 为预设阈值）时，终止搜索，以降低分支预测开销。
 
 \subparagraph{过滤}
 
-在此阶段，会再次遍历输入数组\(input\)求得\(D\)，根据目标桶的下标得到digit\_num，
-而后使用bang\_gt和bang\_filter指令将\(input\)中的数据筛选出来，
-再根据Buckets中的偏移值（此时以涵盖全局信息）将数据复制到指定位置。
-另外将等于digit\_num的数据筛选出来放到数组\(R\)中，作为下一轮次的输入数组。
+\begin{enumerate}
+    \item 根据 B 和 deal\_num\_percore 计算所需的循环次数。每次循环时，执行以下操作：
+    \begin{itemize}
+        \item 将 GDRAM 上的数据加载至 NRAM（即 keys\_nram 和 values\_nram），并利用 bang\_band\_scalar 指令，通过 bucket\_bin\_mask 提取所需数位存入 keys\_temp。
+        \item 遍历 0 到 k\_bin，在每次循环中，使用 bang\_filter 指令筛选 keys\_nram 和 values\_nram，将结果存入 aux0\_nram 和 aux1\_nram，并传输至 GDRAM 对应的输出空间。同时，获取筛选后的数据长度 len，并更新 hist\_local[j] += len。
+        \item 将 local\_counts[k\_bin+1] 对应的数据筛选至 batch\_iter\_workspace 和 values\_batch\_iter\_workspace 以供后续计算使用。
+    \end{itemize}
+    
+    \item 判断 local\_counts[k\_bin+1] 是否等于 k\_now，若满足条件，则将 batch\_iter\_workspace 和 values\_batch\_iter\_workspace 的数据传输至 output\_keys，并返回结果。
+
+    \item 更新 k\_now -= len 以及 total\_data\_len 以继续后续计算。
+\end{enumerate}
+
+
+
+
+
+% 在此阶段，会再次遍历输入数组\(input\)求得\(D\)，根据目标桶的下标得到digit\_num，
+% 而后使用bang\_gt和bang\_filter指令将\(input\)中的数据筛选出来，
+% 再根据Buckets中的偏移值（此时以涵盖全局信息）将数据复制到指定位置。
+% 另外将等于digit\_num的数据筛选出来放到数组\(R\)中，作为下一轮次的输入数组。
 
 
 \subsection{数据类型与数值正负性的适应性分析}

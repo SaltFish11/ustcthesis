@@ -249,7 +249,7 @@ diff2 = diff2\_value + diff2\_index。
     \caption{小k场景下DLP-M/A100性能对比表}
     \begin{tabular}{cllll}
     \toprule
-    数据规模 & k &   MLU590实测(us) & A100耗时(us) & 加速比 \\
+    数据规模 & k &   DLP-M耗时(us) & A100耗时(us) & 加速比 \\
     \midrule
     （1,16384） & 1024    & 25 & 105 & 0.76 \\
     （1,16384） & 2048   & 23 & 115 & 0.80 \\
@@ -391,7 +391,7 @@ DLP-M平台与A100平台上的Topk算子的耗时都逐步增加，并且随着�
     \caption{大k场景下DLP-M/A100性能对比表}
     \begin{tabular}{cllll}
     \toprule
-    数据规模 & k &   MLU590实测(us) & A100耗时(us) & 加速比 \\
+    数据规模 & k &   DLP-M耗时(us) & A100耗时(us) & 加速比 \\
     \midrule
     % （1,32768） & 16384   & 66 & 142 & 2.2 \\
     % （1,65536） & 16384    & 68.5 & 145 &  \\
@@ -417,13 +417,13 @@ DLP-M平台与A100平台上的Topk算子的耗时都逐步增加，并且随着�
     \end{table}
 
 
-    \begin{figure}[ht]
-        \centering
-        \includegraphics[width=0.7\textwidth]{zhexian-bkvsA100.png}
-        \caption{大k场景下DLP-M/A100性能对比图}
-        \label{fig:bench_bk_vsa100_zhexian}
-        % \note{注：图注的内容不宜放到图题中。}
-    \end{figure}
+    % \begin{figure}[ht]
+    %     \centering
+    %     \includegraphics[width=0.7\textwidth]{zhexian-bkvsA100.png}
+    %     \caption{大k场景下DLP-M/A100性能对比图}
+    %     \label{fig:bench_bk_vsa100_zhexian}
+    %     % \note{注：图注的内容不宜放到图题中。}
+    % \end{figure}
     
     \begin{figure}[ht]
         \centering
