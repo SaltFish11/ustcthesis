@@ -247,8 +247,12 @@
     \SetAlgoNoLine 
     % \SetAlgoLined
     % \LinesNumbered            % 强制显示所有行号
-    \KwIn{Array $D$ with $n$ entries, integer $k \leq n$}
-    \KwOut{array R is the Top-k elements}
+    \KwIn{ 数组$Keys$， 代表值; 数组$Values$，代表下标;\\ 
+           数组$D$，$Keys$的数位; 整数n，数组长度;
+           整数 $k$}
+    \KwOut{数组 $Keys\_output$,即最小的k个值;数组 $Values\_output$,即最小k个值的下标;
+    $k\_new$ 下轮次的k值
+    }
     $Bucket \leftarrow$ init $0$ \tcp{Initialize buckets}
     \tcp{\underline{HISTOGRAM - KEYS}\; }
     \For{$j \leftarrow 0$ to $N - 1$}{
@@ -257,25 +261,28 @@
     \tcp{\underline{SCAN - BUCKETS}\; }
     $Sum \leftarrow 0$\;\\
     \For{$i \leftarrow 0$ to $2^r - 1$}{
-        $Val \leftarrow Bucket[i]$\\
-        $Bucket[i] \leftarrow Sum$\\
+        $Val \leftarrow Bucket[i]$; $Bucket[i] \leftarrow Sum$\\
         $Sum \leftarrow Sum + Val$
     }
     \tcp{\underline{FIND TARGET BUCKET}\; }
     \For{$i \leftarrow 0$ to $2^r - 1$}{
         \If{$Bucket[i] \ge k$}{
-            $POS \leftarrow Bucket[i]$\;\\
+            $POS \leftarrow Bucket[i]$\; $k_new \leftarrow k - Bucket[i-1]$\\
             \textbf{break}\;
         }
     }
     \tcp{\underline{FILTER}\; }
+    $offset \leftarrow 0$\\
     \For{$j \leftarrow 0$ to $N - 1$}{
-        \If{$D[j] \ge POS$}{
+        \If{$D[j] > POS$}{
             \textbf{continue}\;
         }
-        $A \leftarrow Bucket[D[j]]$\\
-        $R[A] \leftarrow K[j]$\\
-        $Bucket[D[j]] \leftarrow A + 1$
+        \If{$D[j] == POS$}{
+            $Keys[offset] \leftarrow Keys[j]$; $Values[offset] \leftarrow Values[j]$; $offset \leftarrow j + 1$\\
+            \textbf{continue}\;
+        }
+        $A \leftarrow Bucket[D[j]]$; $Keys\_output[A] \leftarrow Keys[j]$\\
+        $Values\_output[A] \leftarrow Values[j]$; $Bucket[D[j]] \leftarrow A + 1$
     }
     \caption{CountingSort Algorithm}
 \end{algorithm}
@@ -375,27 +382,30 @@ NRAM的空间划分如图~\ref{fig:nram_split_lk}所示。
 针对核心计算阶段的并行化设计，本文采用多级存储协同与向量化指令优化相结合的策略，具体实现流程如下：
 
 \begin{enumerate}
-\item \textbf{存储资源初始化}:
-基于MLU架构的存储层次特性，首先在NRAM空间内执行数据划分策略：根据MLU-Core的物理约束条件，为各计算任务分配私有NRAM存储区域，并建立对应的数据映射关系。初始化位掩码变量$\mathtt{bit\_mask}=0xF0000000$，该参数通过动态右移操作实现迭代过程中数位特征的逐次提取，其偏移量由当前迭代轮次$t$决定，即$\mathtt{bit\_mask} \gg 4(t-1)$。
-
-\item \textbf{直方图构建}:
-采用$\mathtt{bang\_band\_scalar}$向量化位操作指令，对$\mathtt{keys\_nram}$进行位与运算，提取当前数位特征至$\mathtt{keys\_temp}$缓冲。随后通过$\mathtt{bang\_histogram}$指令的并行归约能力，统计$\mathtt{keys\_temp}$各元素的频率分布，生成局部直方图$\mathtt{hist\_local}$。此过程通过寄存器级并行实现零拷贝计算，显著降低内存访问延迟。
-
-\item \textbf{前缀和计算}:
-基于$\mathtt{bang\_presum}$指令的并行扫描特性，对$\mathtt{hist\_local}$执行前缀和操作，
-生成桶边界索引$\mathtt{local\_counts}$。该指令可在$O(\log n)$时间复杂度内完成全局累积统计，为后续桶选择提供决策依据。
-
-\item \textbf{桶搜索}:
-通过线性搜索算法遍历$\mathtt{local\_counts}$数组，求解满足$ \exists i \in [0,b),\ \mathtt{local\_counts}[i] < k \leqslant \mathtt{local\_counts}[i+1] $的临界桶索引$i$，并将目标桶键值记录至$\mathtt{key\_bin}$。该过程引入提前终止机制，当检测到$k-\mathtt{local\_counts}[i] \leqslant \delta$时终止搜索（$\delta$为预设阈值），有效降低分支预测开销。
-
-\item \textbf{过滤}:
-\begin{itemize}
-\item 第一级过滤：应用$\mathtt{bang\_le}$指令生成掩码$\mathtt{mask\_nram}$，标记$\mathtt{keys\_temp}$中值小于$\mathtt{key\_bin}$的位域。通过$\mathtt{bang\_filter}$指令配合$\mathtt{mask\_nram}$，将$\mathtt{keys\_nram}$与$\mathtt{values\_nram}$的匹配元素存入$\mathtt{aux0\_nram/aux1\_nram}$，同时使用$\mathtt{bang\_count}$统计保留元素数$k'$，更新$k \leftarrow k - k'$。
-\item 第二级过滤：采用$\mathtt{bang\_eq}$指令定位等于$\mathtt{key\_bin}$的元素，通过$\mathtt{bang\_filter}$进行选择性保留，并将结果回写至$\mathtt{keys\_nram/values\_nram}$作为下一迭代输入。
-\end{itemize}
-\end{enumerate}
-
-\textbf{优化特性分析}：本实现方案通过（1）NRAM私有化存储消除访存竞争；
+    \item {初始化}:
+    基于 MLU 架构的存储层次特性，首先在 NRAM 空间内执行数据划分策略：根据 MLU-Core 的物理约束条件，为各计算任务分配私有 NRAM 存储区域，并建立对应的数据映射关系。初始化位掩码变量 bit\_mask = 0xF0000000，该参数通过动态右移操作实现迭代过程中数位特征的逐次提取，其偏移量由当前迭代轮次 $t$ 决定，即 bit\_mask $\gg$ 4(t-1)。
+    
+    \item {构建直方图}:
+    采用 bang\_band\_scalar 向量化位操作指令，对 keys\_nram 进行位与运算，提取当前数位特征至 keys\_temp 缓冲。随后通过 bang\_histogram 指令的并行归约能力，统计 keys\_temp 各元素的频率分布，生成局部直方图 hist\_local。此过程通过寄存器级并行实现零拷贝计算，显著降低内存访问延迟。
+    
+    \item {前缀和计算}:
+    基于 bang\_presum 指令的并行扫描特性，对 hist\_local 执行前缀和操作，生成桶边界索引 local\_counts。该指令可在 $O(\log n)$ 时间复杂度内完成全局累积统计，为后续桶选择提供决策依据。
+    
+    \item {桶搜索}:
+    通过线性搜索遍历 local\_counts 数组，求解满足
+    \[
+    \exists i \in [0,b),\ local\_counts[i] < k \leqslant local\_counts[i+1]
+    \]
+    的临界桶索引 $i$，并将目标桶键值记录至 key\_bin。该过程引入提前终止机制，当检测到 $k - local\_counts[i] \leqslant \delta$ 时终止搜索（$\delta$ 为预设阈值），有效降低分支预测开销。
+    
+    \item {过滤}:
+    \begin{itemize}
+    \item 第一级过滤：应用 bang\_le 指令生成掩码 mask\_nram，标记 keys\_temp 中值小于 key\_bin 的位域。通过 bang\_filter 指令配合 mask\_nram，将 keys\_nram 与 values\_nram 的匹配元素存入 aux0\_nram / aux1\_nram，同时使用 bang\_count 统计保留元素数 $k'$，更新 $k \leftarrow k - k'$。
+    \item 第二级过滤：采用 bang\_eq 指令定位等于 key\_bin 的元素，通过 bang\_filter 进行选择性保留，并将结果回写至 keys\_nram / values\_nram 作为下一迭代输入。
+    \end{itemize}
+    \end{enumerate}
+    
+{优化特性分析}：本实现方案通过（1）NRAM私有化存储消除访存竞争；
 （2）向量化指令集提升SIMD效率；
 （3）两级过滤降低分支粒度，最终达成计算密度与存储带宽的平衡优化。
 实验表明该设计可使Top-K选择算子相较于原版本获得明显的加速比提升，并领先NVIDIA A100 GPU的表现效果。（详见第5章评测部分）。
