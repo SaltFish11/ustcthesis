@@ -8,14 +8,14 @@
 如前文所述，在并行Top-k算法领域，已有诸多值得关注的研究成果。在众多成果当中，基于选择的
 并行Top-k算法相较于全排序算法具有明显的领先优势。
 基于选择的并行Top-K算法包括
-QuickSelect [9]、BucketSelect [1]、RadixSelect [1]以及SampleSelect [31]。
-其中QuickSelect [9]以快速排序为基础，然而其与传统排序算法的差异在于，
+QuickSelect、BucketSelect 、RadixSelect 以及SampleSelect\cite{alabi2012fast}\cite{ribizel2020parallel}。
+其中QuickSelect以快速排序为基础，然而其与传统排序算法的差异在于，
 它仅在包含第$K$个元素的子列表上展开迭代操作。此过程通过递归方式持续进行，
 直至所选枢轴最终确定为第$K$个元素，并且在前$K$个元素的确定过程中，通过递归收集
 逐步达成目标。BucketSelect、SampleSelect和RadixSelect则采用多个枢轴，将候
 选元素分配至数十到数百个桶中。BucketSelect的枢轴确定依赖于候选元素的最小值与最
 大值；SampleSelect通过对一小部分元素进行采样并排序，以获取更为适宜的枢轴；
-RadixSelect与最高有效位基数排序 [14]相似，依据元素的数位特征将元素分配至相应桶中。
+RadixSelect与最高有效位基数排序相似，依据元素的数位特征将元素分配至相应桶中。
 而相较于其他三种基于选择的方法，RadixSelect具备若干显著优势：
 
 \begin{enumerate}
@@ -29,7 +29,7 @@ $O(\left\lceil\frac{r}{b}\right\rceil N)$。
 \item 在GPU上，当采用8位或11位数字（分别对应256个或2048个桶）时，RadixSelect能展现出高度的
 并行性，能够更为有效地削减计算工作量。
 
-\item BucketSelect和SampleSelect在选择枢轴时均需计算输入数据的统计信息，而RadixSelect的枢轴选择与输入数据相互独立。
+\item BucketSelect和SampleSelect在选择枢轴时均需计算输入数据的统计信息，而RadixSelect的枢轴选择与输入数据相互独立\cite{zhang2023parallel}。
 
 \end{enumerate}
 基于以上原因，本文主要基于RadixSelect算法对Top-k算子进行并行实现。

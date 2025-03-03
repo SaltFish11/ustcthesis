@@ -152,21 +152,33 @@ Girshick在(2015)年提出了Fast r-cnn算法,该算法在推荐系统，搜索�
 
 \subsubsection{GPU 在 AI 计算中的主导地位}
 
-在 AI 计算领域，GPU 仍然占据主导地位。NVIDIA 作为全球 GPU 计算的领导者，自 2016 年推出专为 AI 计算优化的 Tesla 系列 GPU 以来，持续迭代其架构，以提升深度学习训练和推理任务的效率。最新的 Hopper 架构 GPU（如 H100）引入 Transformer Engine 和 FP8 计算，显著提升了大规模 AI 训练任务的吞吐量 \cite{nvidia2022hopper}。此外，AMD 也推出了 MI200 系列 AI 加速 GPU，与 NVIDIA 竞争云端和高性能计算市场 \cite{amd2021mi200}。
+在 AI 计算领域，GPU 仍然占据主导地位。NVIDIA 作为全球 GPU 计算的领导者，自 2016 年推出专为 AI 计算优化的 Tesla 系列 GPU 以来，
+持续迭代其架构，以提升深度学习训练和推理任务的效率。最新的 Hopper 架构 GPU（如 H100）引入 Transformer Engine 和 FP8 计算，
+显著提升了大规模 AI 训练任务的吞吐量 \cite{choquette2023nvidia}。
+此外，AMD 也推出了 MI200 系列 AI 加速 GPU，与 NVIDIA 竞争云端和高性能计算市场 \cite{smith2022amd}。
 
 \subsubsection{TPU 和 ASIC 加速器的兴起}
 
-Google 在 2017 年推出 TPU（Tensor Processing Unit），其设计目标是优化 AI 计算中的矩阵运算，采用 systolic array 结构以提升计算效率 \cite{jouppi2017datacenter}。最新的 TPU v4 在计算密度和能效比方面相较于前代产品进一步优化，并在 Google Cloud 计算平台中广泛应用。
+Google 在 2017 年推出 TPU（Tensor Processing Unit），其设计目标是优化 AI 计算中的矩阵运算，采用 systolic array 结构
+以提升计算效率 \cite{jouppi2017datacenter}。最新的 TPU v4 在计算密度和能效比方面相较于前代产品进一步优化，并在 Google Cloud 计算平台中广泛应用。
 
-其他科技公司也在 ASIC 领域展开布局，如 Tesla 推出的 FSD（Full Self-Driving）芯片，专用于自动驾驶 AI 计算，采用 7nm 工艺并集成神经网络加速单元 \cite{tesla2020fsd}。Apple 也在其 M 系列芯片（如 M1、M2）中集成了 Neural Engine，优化移动端 AI 任务的执行效率 \cite{apple2021neural}。
+其他科技公司也在 ASIC 领域展开布局，如 Tesla 推出的 FSD（Full Self-Driving）芯片，专用于自动驾驶 AI 计算，采用 7nm 工艺
+并集成神经网络加速单元 \cite{talpes2020compute}。Apple 也在其 M 系列芯片（如 M1、M2）中集成了 Neural Engine，
+优化移动端 AI 任务的执行效率 \cite{kasperek2022comparison}。
 
 \subsubsection{FPGA 在 AI 计算中的应用}
 
-FPGA 由于其灵活性和低延迟特性，在 AI 计算中也扮演重要角色。微软 Azure 采用基于 FPGA 的 Project Brainwave，为云端推理提供高效能计算支持 \cite{microsoft2019brainwave}。Intel 通过收购 Altera，将 FPGA 技术整合到其 AI 计算产品线，如 Stratix 10 和 Agilex 系列 FPGA，以提供自定义 AI 计算加速解决方案 \cite{intel2020agilex}。
+FPGA 由于其灵活性和低延迟特性，在 AI 计算中也扮演重要角色。微软 Azure 采用基于 FPGA 的 Project Brainwave，为云端推理提供高
+效能计算支持 \cite{microsoft2019brainwave}。
+英特尔开发出 Agilex 5 等系列产品,性能突出。同时，英特尔提供多种 AI 开发工具，如 AI Analytics Toolkit、OpenVINO 工具包等，助力开发者构建高效的边缘 AI 系统，
+推动边缘 AI 在多领域应用发展。\cite{ahmadintel}。
 
 \subsubsection{RISC-V 与 AI 计算架构的新探索}
 
-近年来，基于开源 RISC-V 指令集的 AI 处理器也受到广泛关注。例如，西班牙巴塞罗那超级计算中心（BSC）推出的 Lagarto 处理器，采用 RISC-V 架构并集成 AI 加速单元 \cite{aschermann2021risc}。此外，美国初创公司 SiFive 也推出 AI 专用的 RISC-V 处理器 IP，为定制 AI 计算硬件提供新的选择 \cite{sifive2021ai}。
+近年来，基于开源 RISC-V 指令集的 AI 处理器也受到广泛关注,在AI计算领域正发挥越来越重要的作用\cite{kalapothas2023survey}\cite{gomez2023challenges}。
+例如,Garofalo(2021)聚焦于在低功耗物联网终端节点部署卷积神经网络（CNNs）时，因主流嵌入式微控制器（MCUs）指令集对低比特宽度定点指令
+支持不足而面临的挑战。为此引入 RISC-V ISA 轻量级扩展，添加 4 位和 2 位 SIMD 指令，在 QNN 关键内核计算上实现近线性加速。
+同时提出融合点积与加载操作的定制执行范式，提升了每周期峰值乘累加运算性能\cite{garofalo2021xpulpnn}。将扩展后的核心集成到 8 处理器并行集群，性能相比单核近乎线性提升。经实验验证，该方案在 QNN 卷积内核运算速度和能效上优势显著，远超同类 ARM Cortex-M 架构的 MCU 系统。
 \begin{table}
     \centering
     \caption{国外 AI 处理器产品}
@@ -192,8 +204,11 @@ FPGA 由于其灵活性和低延迟特性，在 AI 计算中也扮演重要角�
 
 \subsubsection{国产 AI 处理器的兴起}
 
-近年来，国内 AI 处理器领域发展迅速，多家企业和研究机构纷纷推出自主研发的 AI 计算芯片。寒武纪（Cambricon）自 2016 年推出第一代深度学习处理器以来，不断优化其架构，最新的 MLU370 处理器采用先进的芯粒（Chiplet）封装技术，提高 AI 计算性能 \cite{cambricon2022mlu}。华为昇腾（Ascend）系列 AI 处理器基于自研达芬奇（Da Vinci）架构，支持多精度计算，适用于云端和边缘计算 \cite{huawei2021ascend}。
-此外，百度推出的昆仑 AI 处理器，面向云计算和边缘计算优化，采用国产自研架构并支持高效推理计算 \cite{baidu2021kunlun}。阿里平头哥开发的含光 800 AI 处理器，基于 RISC-V 指令集，主要应用于智能城市和数据中心 \cite{alibaba2019hanguang}。
+近年来，国内 AI 处理器领域发展迅速，多家企业和研究机构纷纷推出自主研发的 AI 计算芯片。寒武纪（Cambricon）自 2016 年推出第一代深度学习处理器以来，
+不断优化其架构，其MLU370 处理器采用先进的芯粒（Chiplet）封装技术，提高 AI 计算性能 \cite{song2023cambricon}。
+华为昇腾（Ascend）系列 AI 处理器基于自研达芬奇（Da Vinci）架构，支持多精度计算，适用于云端和边缘计算 \cite{liao2021ascend}。
+此外，百度推出的昆仑 AI 处理器，面向云计算和边缘计算优化，采用国产自研架构并支持高效推理计算 \cite{zhang2023intelligent}。
+阿里平头哥开发的含光 800 AI 处理器，基于 RISC-V 指令集，主要应用于智能城市和数据中心 \cite{reuther2020survey}。
 值得注意的是，各家企业的AI处理器其指令集，硬件体系结构以及对应的编程模型有着各自的特点。
 因此，即使在算法一致的情况下，也需要结合各自的特点进行实现和优化。
 
@@ -219,20 +234,30 @@ FPGA 由于其灵活性和低延迟特性，在 AI 计算中也扮演重要角�
 
 \subsubsection{学术界的研究进展}
 
-国内高校和研究机构也在 AI 计算架构领域取得了诸多研究成果。例如，北京大学的研究团队提出了面向异构计算的低功耗 AI 加速架构，优化计算效率 \cite{li2022pku}。清华大学开发了基于存算一体（Processing-in-Memory, PIM）技术的 AI 处理器，旨在降低数据传输带来的能耗瓶颈 \cite{zhang2023pim}。
-
-此外，中科院计算技术研究所也在 AI 处理器领域进行探索，开发了一系列 RISC-V 兼容的 AI 计算芯片，为国产自主可控 AI 计算硬件提供支持 \cite{casic2022riscv}。
-
-% \subsubsection{市场与政策推动}
+国内高校和研究机构也在 AI 计算架构领域取得了诸多研究成果。例如，北京大学的研究团队提出了面向异构计算的低功耗 AI 加速架构，
+优化计算效率。清华大学开发了基于存算一体（Processing-in-Memory, PIM）技术的 AI 处理器，
+旨在降低数据传输带来的能耗瓶颈。此外，中科院计算技术研究所也在 AI 处理器领域进行探索，开发了一系列 RISC-V 兼容的 AI 计算芯片，为国产自主可控 AI 计算硬件提供支
+持 。
 
 
 \subsection{发展趋势}
-未来，AI 处理器的发展将朝着异构计算方向演进，即通过整合 CPU、GPU、ASIC 及 FPGA 资源，提高计算吞吐量和能效比。例如，AMD 和 NVIDIA 均在研究 CPU-GPU 互连架构，以优化 AI 计算的整体性能 \cite{amd2022chiplet}。同时，Chiplet（芯粒）技术成为 AI 处理器的重要发展方向。例如，寒武纪 MLU370 采用 Chiplet 设计，提高了计算模块的可扩展性和数据传输效率 \cite{cambricon2022mlu}。Intel 和 AMD 也纷纷推出基于 Chiplet 设计的 AI 加速芯片，以降低生产成本并提高计算效率。而随着 IoT（物联网）和智能终端设备的发展，边缘 AI 计算市场需求持续增长。例如，华为的 Ascend Nano 处理器面向低功耗 AI 计算优化，适用于智能摄像头和无人机等应用 \cite{huawei2022ascendnano}。此外，Apple 和 Qualcomm 也在智能手机芯片中集成 AI 计算单元，以提升设备端的 AI 计算能力 \cite{qualcomm2023snapdragon}。
-另外，国家层面的政策支持为国产 AI 处理器的发展提供了良好环境。例如，《新一代人工智能发展规划》中明确提出加强 AI 计算硬件自主研发，并支持企业和高校在 AI 处理器领域的创新 \cite{china2017ai}. 近年来，各地政府纷纷设立 AI 产业基金，支持 AI 芯片企业的技术突破和产业化应用。
+未来，AI 处理器的发展将朝着异构计算方向演进，即通过整合 CPU、GPU、ASIC 及 FPGA 资源，提高计算吞吐量和能效比。例如
+，AMD 和 NVIDIA 均在研究 CPU-GPU 互连架构，
+以优化 AI 计算的整体性能 \cite{mishty2024chiplet}。同时，Chiplet（芯粒）技术成为 AI 处理器的重要发展方向。
+例如，寒武纪 MLU370 采用 Chiplet 设计，提高了计算模块的可扩展性和数据传输效率 。
+Intel 和 AMD 也纷纷推出基于 Chiplet 设计的 AI 加速芯片，以降低生产成本并提高计算效率。而随着 IoT（物联网）和
+智能终端设备的发展，边缘 AI 计算市场需求持续增长。例如，华为的 Ascend Nano 处理器面向低功耗 AI 计算优化，适用于智
+能摄像头和无人机等应用 。此外，Apple 和 Qualcomm 也在智能手机芯片中集成 AI 计算单元，
+以提升设备端的 AI 计算能力 。
+另外，国家层面的政策支持为国产 AI 处理器的发展提供了良好环境。例如，《新一代人工智能发展规划》中明确提出加强 AI 计算
+硬件自主研发，并支持企业和高校在 AI 处理器领域的创新 . 近年来，各地政府纷纷设立 AI 产业基金，
+支持 AI 芯片企业的技术突破和产业化应用。
 
 \subsection{总结}
 
-综上所述，AI 处理器的研究和发展在全球范围内呈现出多样化和快速演进的趋势。国际上，GPU 仍然主导 AI 计算市场，但 ASIC 和 FPGA 逐步获得更大市场份额。国内企业和研究机构在 AI 处理器领域取得了长足进步，未来将进一步推动自主可控计算架构的发展。展望未来，异构计算、Chiplet 技术和边缘 AI 计算将成为 AI 处理器的重要发展方向。
+综上所述，AI 处理器的研究和发展在全球范围内呈现出多样化和快速演进的趋势。国际上，GPU 仍然主导 AI 计算市场，但 ASIC 
+和 FPGA 逐步获得更大市场份额。国内企业和研究机构在 AI 处理器领域取得了长足进步，未来将进一步推动自主可控计算架构的发展。
+展望未来，异构计算、Chiplet 技术和边缘 AI 计算将成为 AI 处理器的重要发展方向。
 
 
 
