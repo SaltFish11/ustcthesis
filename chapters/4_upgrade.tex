@@ -374,12 +374,12 @@ RT提供了丰富且灵活的队列管理接口、异步 Kernel 执行接口和�
   数据迁移接口将各队列待处理的图像数据 从主机端迁移到设备端。数据迁移完成后即可启
    Kernel 核函数进行 Top-k 算子的计算。最后再次调用 rtMemcpyAsync 异步数据
    迁移接口将计算好的结果从设备端迁移到主机端即可。
-通过这样的操作，可以有效的将主机端与设备端之间的IO与计算相互掩盖。达到减少整个任务计算时间的效果，如图~\ref{fig:level}所示。
+通过这样的操作，可以有效的将主机端与设备端之间的IO与计算相互掩盖。达到减少整个任务计算时间的效果，如图~\ref{fig:multi_queue}所示。
 \begin{figure}[ht]
     \centering
     \includegraphics[scale = 0.6]{level_1.jpg}
     \caption{多队列优化效果图}
-    \label{fig:level}
+    \label{fig:multi_queue}
     % \note{注：图注的内容不宜放到图题中。}
 \end{figure}
 
