@@ -217,7 +217,7 @@
 我们需要对RadixSelect的输出结果根据参数sort来判断是否有必要进行排序。
 另外，考虑到国产AI处理器的I/O特点，我们需要根据dim与输入的维度信息关系，
 来判断是否有必要对输入/输出进行转置操作。因此，设备端的计算流程如下图~\ref{fig:shebeiliucheng}
-所示：
+所示。
 
 \begin{figure}[ht]
     \centering
@@ -245,12 +245,13 @@
 
 \begin{algorithm}
     \SetAlgoNoLine 
+    \label{alg:Counting}
     % \SetAlgoLined
     % \LinesNumbered            % 强制显示所有行号
     \KwIn{ 数组$Keys$， 代表值; 数组$Values$，代表下标;\\ 
            数组$D$，$Keys$的数位; 整数n，数组长度;
            整数 $k$}
-    \KwOut{数组 $Keys\_output$,即最小的k个值;数组 $Values\_output$,即最小k个值的下标;
+    \KwOut{数组 $Keys\_output$,即最小的k个值;数组 $Values\_output$,即最小k个值的下标;\\
     $k\_new$ 下轮次的k值
     }
     $Bucket \leftarrow$ init $0$ \tcp{Initialize buckets}

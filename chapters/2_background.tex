@@ -33,9 +33,12 @@ $O(\left\lceil\frac{r}{b}\right\rceil N)$。
 
 \end{enumerate}
 基于以上原因，本文主要基于RadixSelect算法对Top-k算子进行并行实现。
-RadixSelect算法基于基数排序思想，用于在无序数组中找到第k小（或大）的元素，其核心步骤如下：
+RadixSelect算法基于基数排序思想，用于在无序数组中找到第k小（或大）的元素，
+首先将元素的二进制表示按每连续b位划分为一个数位（digit），从最高有效位开始处理，
+每次迭代处理一个数位。对于r位元素，共需$\left\lceil\frac{r}{b}\right\rceil$次迭代。
+而对于每次迭代，其核心步骤如下：
 \begin{enumerate}
-    \item {数位分组}：将元素的二进制表示按每连续b位划分为一个数位（digit），从最高有效位开始处理，每次迭代处理一个数位。对于r位元素，共需$\left\lceil\frac{r}{b}\right\rceil$次迭代。
+    
     \item  {计算直方图}：在每次迭代中，提取每个元素当前处理数位的b位并转换为对应的digit值（范围是$[0, 2^{b}-1]$），然后计算直方图以记录每个digit值出现的频率，即直方图的第i个计数器记录digit值等于i的元素数量。
     \item  {计算前缀和}：对直方图计算前缀和（inclusive prefix sum），得到前缀和数组psum。（psum[i]表示digit值小于或等于i的元素数量）。
     \item  {确定目标数位}：通过前缀和数组找到第k小元素应具有的digit值j，满足psum[j - 1] < K且psum[j] ≥ K。

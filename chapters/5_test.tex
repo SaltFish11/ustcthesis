@@ -49,7 +49,6 @@
     \item 初始化 Top-k 描述符，并为保存 Top-k 参数内容的结构体创建一个句柄。 同时计算出当前输入参数下计算得到的 Top-k 特征向量需要占用的内存空间大 小, 并分配对应的内存空间。
     \item 准备输入数据，调用 RT 接口分配设备内存，并将输入数据拷贝到设备 内存中。
     \item MLU 端调用自实现的 Top 算子，得到 Top-看 特征向量。CPU 端调用 RT接口等待任务队列执行完成。
-    
     \item 调用RT接口将Top-k算子的计算结果复制到主机侧。
     \item 主机侧调用Top-k的串行实现，得到比对的计算结果。
     \item 将设备端的计算结果与主机端的计算结果进行比较。
@@ -427,7 +426,7 @@ DLP-M平台与A100平台上的Topk算子的耗时都逐步增加，并且随着�
     
     \begin{figure}[ht]
         \centering
-        \includegraphics[width=0.7\textwidth]{zhexian-bkvsA100-1.png}
+        \includegraphics[width=0.75\textwidth]{zhexian-bkvsA100-1.png}
         \caption{大k场景下DLP-M/A100性能对比图}
         \label{fig:bench_bk_vsa100_zhexian_1}
         % \note{注：图注的内容不宜放到图题中。}
