@@ -93,7 +93,7 @@ diff2表示与CPU返回的Top-k数据的均方差。
 diff1 = diff1\_value + diff1\_index,
 diff2 = diff2\_value + diff2\_index。
 本部分主要展示输入数据的数据类型为float和int的误差。小k场景下的Top-k算子的精度测试结果
-如表~\ref{ab:presicionsmallk}所示。
+如表~\ref{tab:presicionsmallk}所示。
 \begin{table}
 \centering
 \caption{小k场景下Top-k功能测试表}
@@ -142,7 +142,7 @@ diff2 = diff2\_value + diff2\_index。
 
 \section{Top-k算子性能测试}
 在本节中，我们针对两种场景下的核函数进行性能测试。首先是对比优化前后的性能提升效果。
-而后分别与DLP-M原版本 Top-k 算子，Nvidia-A100 Top-k 算子显卡进行性能对比。
+而后分别与DLP-M原版本 Top-k 算子，Nvidia-A100 Top-k 算子进行性能对比。
 \subsection{小k场景下RadixSelect算子性能测试}
 \paragraph{优化前后性能对比}
 在使用前文中的各种优化手段后，本节对（100, 1310720）这一数据规模进行了实验测试，
@@ -169,7 +169,7 @@ diff2 = diff2\_value + diff2\_index。
         \bottomrule
     \end{tabular}
     \end{table}
-具体效果如图{zhexian-lk-upgrade.png}所示，
+具体效果如图~\ref{fig:bench_littlek_upgrade_zhexian}所示，
 对比效果图我们可以发现，在相同输入规模下，随着k的增加，优化前后的时间都在逐渐增加。
 这反映了对于相同的输入规模而言，k的值越大，单个MLU-Core的任务量也就越大，在执行RadixSelect
 算法时，其“FIND TARGET BUCKET”与”FILTER“中的任务也将更复杂。
@@ -197,7 +197,7 @@ diff2 = diff2\_value + diff2\_index。
         \toprule
         数据规模       &k  & dim  & largest & RadixSelect耗时    & 原版本耗时 &加速比\\
         \midrule
-        （1,80000） float&100&  1     & True      & 14.99 & 78.22 & 0.8093\\
+        % （1,80000） float&100&  1     & True      & 14.99 & 78.22 & 0.8093\\
         %（1,391680） float&1000&  1     & True      & 79 & 10917  & 0.9721 \\  
 
         （16,136960） float&10000&  1     & True      & 280 & 1535 & 0.8176\\
@@ -230,7 +230,8 @@ diff2 = diff2\_value + diff2\_index。
         % \note{注：图注的内容不宜放到图题中。}
     \end{figure}
     
-
+    将A和B分别固定为100和1310720,对于不同的k的数值进行绘图，如图~\ref{fig:bench_littlek-vsorigin_1}所示。
+    可以发现随着k值的增大，相较于原来版本的加速效果越来越好。
     \begin{figure}[ht]
         \centering
         \includegraphics[width=0.65\textwidth]{zhexian-lk-vsorigin_2.png}
@@ -241,9 +242,8 @@ diff2 = diff2\_value + diff2\_index。
     
 
 \paragraph{与A100-GPU性能对比}
-小k场景下RadixSelect算子性能与NVIDIA A100 GPU进行性能对比，其性能测试数据如表
-~\ref{tab:lkvsa100}所示。
-\begin{table}
+小k场景下RadixSelect算子性能与NVIDIA A100 GPU进行性能对比，其性能测试数据如表~\ref{tab:lkvsa100}所示。
+\begin{longtable}
     \centering
     \caption{小k场景下DLP-M/A100性能对比表}
     \begin{tabular}{cllll}
@@ -276,11 +276,10 @@ diff2 = diff2\_value + diff2\_index。
     \bottomrule
     \end{tabular}
 \label{tab:lkvsa100}    
-\end{table}
+\end{longtable}
     
-    在相同输入规模，不同k值下进行绘图，如图~\ref{fig:bench_littlek_vsa100_zhexian}
-    和~\ref{fig:bench_littlek_vsa100_2_zhexian}所示。随着输入规模的增大，
-    DLP-M平台与A100平台上的Topk算子的耗时都逐步增加，并且随着数据规模的增大，加速比总体上呈现
+    在相同输入规模，不同k值下进行绘图，如图~\ref{fig:bench_littlek_vsa100_2_zhexian}所示。
+    随着输入规模的增大，DLP-M平台与A100平台上的Topk算子的耗时都逐步增加，并且随着数据规模的增大，加速比总体上呈现
     逐步下降的趋势，当k过大时（如8192），DLP-M的加速比骤然变大，这应当主要由于
     DLP-M与A100的体系结构差异导致的，即此时A100上的Top-k算子可能切换到了别的版本实现中，但由于时间问题，并没有进一步深究。
     整体而言，在输入较小时，相较于A100可以达到3.5-4倍的提速。
@@ -289,7 +288,6 @@ diff2 = diff2\_value + diff2\_index。
     \begin{figure}[ht]
         \centering
         \includegraphics[width=0.75\textwidth]{zhexian-lkvsA100-11.png}
-        % \caption{小k场景优化前后对比图}
         \label{fig:bench_littlek_vsa100_zhexian}
         % \note{注：图注的内容不宜放到图题中。}
     \end{figure}

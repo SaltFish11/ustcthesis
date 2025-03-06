@@ -119,7 +119,7 @@
     其中\(\text{left\_right}=\text{left}×\text{right}\)。当Top - k任务完成之后，输出的形
     状将为（\(\text{left\_right}\)，\(\text{k}\)），此时需要对结果再次进行转置操作，其输出形状
     为（\(\text{left}\)，\(\text{k}\)，\(\text{right}\)），
-    作为最终Top - k算子的最终结果。其形状的转变流程如图~\ref{fig:input_shape}
+    作为最终Top - k算子的最终结果。其形状的转变流程如图~\ref{fig:input_shape}。
     
     \begin{figure}[ht]
         \centering
@@ -244,7 +244,7 @@
 ，其伪代码见算法~\ref{alg:Counting}。
 
 \begin{algorithm}
-    \SetAlgoNoLine 
+    % \SetAlgoNoLine 
     \label{alg:Counting}
     % \SetAlgoLined
     % \LinesNumbered            % 强制显示所有行号
@@ -582,7 +582,15 @@ A\_split行数据。对于相同Job中的Task而言，进一步在B维度进行�
 使用循环依次将数据加载到NRAM空间进行处理。
 在硬件层面，上述数据拆分过程主要考虑的是各个MLU-Core应该计算哪些输入数据。
 而对于具体的实现过程，首先需要考虑输入数据和其他中间变量在各层存储中的空间划分。对于GDRAM而言，主要分为keys，values，output\_keys,
-output\_values和Workspace五块区域，各个变量的作用如下表~\ref{tab:gdram_var_bk}所示，
+output\_values和Workspace五块区域，各个变量的作用如下表~\ref{tab:gdram_var_bk}所示，其空间划分如图~\ref{fig:gdram_split_bk}所示,
+值得注意的是，此场景主要针对大规模数据。
+此时单个MLU-Core上的NRAM上的空间已经不能够完全放下一行数据，
+即单个MLU-Core所负责的数据规模远大于NRAM空间一次能够处理的数据。
+此时需要将某些中间结果暂存在GDRAM上，因此将workspace进一步划分为counts\_ddr,batch\_iter\_workspace和values\_batch\_iter\_workspace，
+如图~\ref{fig:workspace_split_bk.png}所示。
+其中counts\_ddr主要用于存储各个MLU-Core的局部前缀信息，主要达到同步信息的作用。
+batch\_iter\_workspace主要存储每次循环执行CountingSort算法时的输入，即筛选之后的输入数据。
+values\_batch\_iter\_workspace同理。
 \begin{table}
     \caption{GDRAM空间变量说明表}
     \centering
@@ -599,7 +607,7 @@ output\_values和Workspace五块区域，各个变量的作用如下表~\ref{tab
     \end{tabular}
     \label{tab:gdram_var_bk}
 \end{table}
-其空间划分如图~\ref{fig:gdram_split_bk}所示,
+
 \begin{figure}[ht]
     \centering
     \includegraphics[scale = 0.45]{gdram_split_bk.png}
@@ -607,14 +615,7 @@ output\_values和Workspace五块区域，各个变量的作用如下表~\ref{tab
     \label{fig:gdram_split_bk}
     % \note{注：图注的内容不宜放到图题中。}
 \end{figure}
-值得注意的是，此场景主要针对大规模数据。
-此时单个MLU-Core上的NRAM上的空间已经不能够完全放下一行数据，
-即单个MLU-Core所负责的数据规模远大于NRAM空间一次能够处理的数据。
-此时需要将某些中间结果暂存在GDRAM上，因此将workspace进一步划分为counts\_ddr,batch\_iter\_workspace和values\_batch\_iter\_workspace，
-如图~\ref{fig:workspace_split_bk.png}所示。
-其中counts\_ddr主要用于存储各个MLU-Core的局部前缀信息，主要达到同步信息的作用。
-batch\_iter\_workspace主要存储每次循环执行CountingSort算法时的输入，即筛选之后的输入数据。
-values\_batch\_iter\_workspace同理。
+
 \begin{figure}[ht]
     \centering
     \includegraphics[scale = 0.45]{workspace_split_bk.png}
