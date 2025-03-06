@@ -68,7 +68,7 @@ digit值为'01'的元素进入候选缓冲区用于下一次迭代，同时更�
 本文基于寒武纪多核深度学习处理器（Deep Learning Processor-Multicore，DLP-M）
 实现Top-k算子，下面主要从体系结构，内存层次，编程模型三个方面对其进行介绍。
 \subsection{抽象硬件模型}
-DLP-M硬件的基本组成单元是MLU Core。每个 MLU Core 是具备完整计算、IO和控制功能的处理器核心，可以独立完成一个计算任务，
+DLP-M硬件的基本组成单元是MLU-Core。每个 MLU-Core 是具备完整计算、IO和控制功能的处理器核心，可以独立完成一个计算任务，
 也可以与其他 MLU Core 协作完成一个计算任务。每4个 MLU Core 核心构成一个 Cluster，另外，其每个 Cluster 内还会包含一个
 额外的 Memory Core 和一块被 Memory Core 和 4 个 MLU Core 共享的 SRAM（Shared RAM，共享存储单元）。
 Memory Core 不能执行向量和张量计算指令，只能用于 SRAM 与 DDR （Double Data Rate Synchronous Dynamic Random Access Memory，
@@ -77,11 +77,12 @@ Cambricon BANG 异构并行计算平台对底层由 MLU 硬件构成的大规模
 向用户展示了一个高度并行、灵活扩展和易于操控的抽象硬件模型。Cambricon BANG异构并行编程模型由通用处理器和多个 MLU 领域专用处理器组成。
 其中，MLU 负责核心的大规模并行计算，而通用处理器则作为控制单元，负责复杂控制和任务调度等工作
 。整个抽象硬件模型分为5个层级：服务器级、板卡级、芯片级、处理器簇（Cluster）级和 MLU Core 级，
-每个层次都包括抽象的控制单元、计算单元和存储单元，
+每个层次都包括抽象的控制单元、
+计算单元和存储单元，
 如图~\ref{fig:arch}所示。
 \begin{figure}[ht]
     \centering
-    \includegraphics[width=0.8\textwidth]{arch.png}
+    \includegraphics[width=0.8\textwidth]{arch_1.png}
     \caption{DLP-M 架构图}
     \label{fig:arch}
     \note{}
@@ -112,7 +113,7 @@ L2 Cache 是芯片的全局共享存储资源，目前主要用于缓存指令�
 最大化计算效率。其内存层次图如图~\ref{fig:memory}所示
 \begin{figure}[ht]
     \centering
-    \includegraphics[width=0.8\textwidth]{memory.png}
+    \includegraphics[width=0.9\textwidth]{memory.png}
     \caption{内存层次图}
     \label{fig:memory}
     \note{}
@@ -172,21 +173,22 @@ Cambricon PyTorch借助PyTorch自身提供的设备扩展接口将MLU后端库�
 
 \item Torch模块中与MLU相关的接口的语义与CPU和GPU的接口语义保持一致。
 \end{enumerate}
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=1.0\textwidth]{level.png}
+  \caption{软件栈示意图}
+  \label{fig:level}
+  \note{}
+\end{figure}
 为便于进行PyTorch和基于深度学习处理器的Top-k实现关系的理解，此处对国产AI处理器的整体软件栈结构进行介绍。
-在其软件栈中，如下图\ref{fig:level}所示。
+在其软件栈中，如图\ref{fig:level}所示。
 PyTorch等通过调用Cambricon CNNL算子接口，
 实现对应的框架层算子在MLU上的高性能加速计算。而Cambricon CNNL作为一个网络运算库，提供了人工智能计算所需要
 的算子接口。Cambricon CNNL算子的计算通过软件栈底层CNRT（Cambricon Runtime Library，寒武纪运行时库
 ）和CNDrv 接口（Cambricon Driver API，寒武纪驱动API）完成与寒武纪MLU设备底层驱动的交互和计算任务。
 
 
-\begin{figure}[ht]
-    \centering
-    \includegraphics[width=1.0\textwidth]{level.png}
-    \caption{软件栈示意图}
-    \label{fig:level}
-    \note{}
-  \end{figure}
+
 
 
 

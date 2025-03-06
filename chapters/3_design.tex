@@ -332,31 +332,12 @@
     % \note{注：图注的内容不宜放到图题中。}
 \end{figure}
 
-我们知道DLP-M具有多级层次存储，且针对不同的层级的存储空间，对于MLU-Core而言其I/O效率和可见性并不一样。在进行数据拆分之后，我们需要进一步设计
-各变量的在各存储上的空间划分。结合具体的实现过程，
-GDRAM的空间划分如图~\ref{fig:gdr_split_lk}所示。
+已知DLP-M具备多级层次存储结构，对于MLU-Core而言，不同层级的存储空间在I/O效率和可见性方面存在差异。在完成数据拆分后，有必要进一步对各变量在不同存储上的空间进行合理划分。
 
-\begin{figure}[ht]
-    \centering
-    \includegraphics[scale = 0.5]{gdr_split_lk.png}
-    \caption{GDRAM空间划分示意图}
-    \label{fig:gdr_split_lk}
-    % \note{注：图注的内容不宜放到图题中。}
-\end{figure}
-其中，图中keys所指空间用以存储来自主机端内存的keys数据，values所指空间用以存储来自主机端内存的values数据，
-output\_keys和output\_values是最后的输出结果。
-workspace所指空间是各Job正常工作时的辅助空间，用以存储辅助变量。
-NRAM的空间划分如图~\ref{fig:nram_split_lk}所示。
-
-\begin{figure}[ht]
-    \centering
-    \includegraphics[scale = 0.5]{nram_split_lk.png}
-    \caption{NRAM空间划分示意图}
-    \label{fig:nram_split_lk}
-    % \note{注：图注的内容不宜放到图题中。}
-\end{figure}
-
-
+从具体实现过程来看，GDRAM的空间划分情况如图\ref{fig:gdr_split_lk}所示。其中，标注为keys的空间用于存储从主机端内存获取的keys数据；
+标注为values的空间则用于存储源自主机端内存的values数据；
+output\_keys和output\_values作为最终的输出结果存放区域；而workspace所代表的空间，是各Job正常运行时的辅助空间，用于存储辅助变量。
+关于NRAM的空间划分，可参考图\ref{fig:nram_split_lk}。表\ref{tab:nram_var}对NRAM空间中的各个变量进行了详细阐释 。 
 \begin{table}
     \caption{NRAM空间变量作用说明表}
     \centering
@@ -376,6 +357,53 @@ NRAM的空间划分如图~\ref{fig:nram_split_lk}所示。
     \end{tabular}
     \label{tab:nram_var}
 \end{table}
+
+
+
+\begin{figure}[htbp]
+    \centering
+    \begin{subfigure}[b]{\textwidth}
+        \centering
+        \includegraphics[scale = 0.5]{gdr_split_lk.png}
+        \caption{GDRAM内存划分}
+        \label{fig:gdr_split_lk}
+    \end{subfigure}
+    
+    \vspace{1em} % 增加上下间距
+
+    \begin{subfigure}[b]{\textwidth}
+        \centering
+        \includegraphics[scale = 0.6]{nram_split_lk.png}
+    \caption{NRAM内存划分}
+    \label{fig:nram_split_lk}
+    \end{subfigure}
+    
+    \caption{空间划分示意图}
+    \label{fig:images}
+\end{figure}
+
+
+
+
+
+% \begin{figure}[ht]
+%     \centering
+%     \includegraphics[scale = 0.5]{gdr_split_lk.png}
+%     \caption{GDRAM空间划分示意图}
+%     \label{fig:gdr_split_lk}
+%     % \note{注：图注的内容不宜放到图题中。}
+% \end{figure}
+
+% \begin{figure}[ht]
+%     \centering
+%     \includegraphics[scale = 0.5]{nram_split_lk.png}
+%     \caption{NRAM空间划分示意图}
+%     \label{fig:nram_split_lk}
+%     % \note{注：图注的内容不宜放到图题中。}
+% \end{figure}
+
+
+
 
 % 比如，对于GDRAM而言，其对于各个MLU-Core均可见;对于SRAM而言，其对于同一个Cluster内各个MLU-Core均可见，不同Cluster之间不能互相访问;
 % 对于NRAM和WRAM而言，是MLU-Core私有存储空间，各个MLU-Core不能互相访问彼此的NRAM和WRAM空间。
@@ -420,6 +448,10 @@ NRAM的空间划分如图~\ref{fig:nram_split_lk}所示。
 最终结果。此步骤完成后，系统可继续执行随后的数据传输与处理操作。这一处
 理策略确保了在维持计算效率的同时，能够对大规模数据集进行有效管理和运算。
 单核在多核运行环境下的执行顺序如下图\ref{fig:duohe_split}所示。
+
+
+Split和 Concat 操作是I/O类型算子，也就是说单核 RadixSelect 算法的实现方案在多核上
+执行，势必会引入 Split 和 Concat 的额外时间开销，在某些极端的场景下，这可能会成为性能瓶颈。
 \begin{figure}[ht]
     \centering
     \includegraphics[scale = 0.75]{multicore_data_split.jpg}
@@ -427,10 +459,6 @@ NRAM的空间划分如图~\ref{fig:nram_split_lk}所示。
     \label{fig:duohe_split}
     % \note{注：图注的内容不宜放到图题中。}
 \end{figure}
-
-Split和 Concat 操作是I/O类型算子，也就是说单核 RadixSelect 算法的实现方案在多核上
-执行，势必会引入 Split 和 Concat 的额外时间开销，在某些极端的场景下，这可能会成为性能瓶颈。
-
 
 \paragraph{多核版本}
 由于单核RadixSelect的整个操作都是在NRAM空间上进行，需要其输入，输出和各种中间变量的内存容量大小总和
@@ -541,6 +569,10 @@ X =
 而通过分析我们发现，
 $Buckets[i][j]$代表在进行SCAN-BUCKETS处理后，$A$中元素最终在结果$R$中的偏移位置，
 具体关系见下图~\ref{fig:digits}。
+
+假如该算法用 4 个处理器和 4 个桶来对 0 - 3 的值进行排序。偏移量是通过扫描桶来计算的。
+扫描之后，每个处理器在具有特定值的键的最终输出中都有一个起始位置。
+例如，处理器 3 将把值为 “0” 的键从输出中的第 5 个位置开始放置，把值为 “1” 的键从第 14 个位置开始放置，如偏移量所示。
 \begin{figure}[ht]
     \centering
     \includegraphics[scale = 0.6]{process_digits.jpg}
@@ -549,9 +581,6 @@ $Buckets[i][j]$代表在进行SCAN-BUCKETS处理后，$A$中元素最终在结�
     % \note{注：图注的内容不宜放到图题中。}
 \end{figure}
 
-假如该算法用 4 个处理器和 4 个桶来对 0 - 3 的值进行排序。偏移量是通过扫描桶来计算的。
-扫描之后，每个处理器在具有特定值的键的最终输出中都有一个起始位置。
-例如，处理器 3 将把值为 “0” 的键从输出中的第 5 个位置开始放置，把值为 “1” 的键从第 14 个位置开始放置，如偏移量所示。
 
 所以需要将矩阵\(Buckets[i, j]\)在列方向上以及行方向上进行扫描操作，以汇总全局信息，
 其数学公式见~\ref{equ:buckets}
@@ -578,19 +607,16 @@ A\_split行数据。对于相同Job中的Task而言，进一步在B维度进行�
     \label{fig:data_split_bk}
     % \note{注：图注的内容不宜放到图题中。}
 \end{figure}
-当B\_split数据仍然大于NRAM空间时，此时需要将B\_split进一步划分为若干段，
-使用循环依次将数据加载到NRAM空间进行处理。
-在硬件层面，上述数据拆分过程主要考虑的是各个MLU-Core应该计算哪些输入数据。
-而对于具体的实现过程，首先需要考虑输入数据和其他中间变量在各层存储中的空间划分。对于GDRAM而言，主要分为keys，values，output\_keys,
-output\_values和Workspace五块区域，各个变量的作用如下表~\ref{tab:gdram_var_bk}所示，其空间划分如图~\ref{fig:gdram_split_bk}所示,
-值得注意的是，此场景主要针对大规模数据。
-此时单个MLU-Core上的NRAM上的空间已经不能够完全放下一行数据，
-即单个MLU-Core所负责的数据规模远大于NRAM空间一次能够处理的数据。
-此时需要将某些中间结果暂存在GDRAM上，因此将workspace进一步划分为counts\_ddr,batch\_iter\_workspace和values\_batch\_iter\_workspace，
-如图~\ref{fig:workspace_split_bk.png}所示。
-其中counts\_ddr主要用于存储各个MLU-Core的局部前缀信息，主要达到同步信息的作用。
-batch\_iter\_workspace主要存储每次循环执行CountingSort算法时的输入，即筛选之后的输入数据。
-values\_batch\_iter\_workspace同理。
+
+
+
+
+当 \( B\_split \) 数据量超出 NRAM 存储空间容量时，需将 \( B\_split \) 进一步划分为若干段，通过循环机制依次将数据加载至 NRAM 空间进行处理。从硬件层面分析，上述数据拆分过程的核心在于明确各 MLU - Core 的输入数据计算范畴。就具体实现流程而言，首先需考量输入数据及其他中间变量在各层级存储中的空间分配策略。  
+
+针对 GDRAM 存储区域，其空间主要划分为 keys、values、output\_keys、output\_values 和 Workspace 五个部分，各变量功能详见表 \ref{tab:gdram_var_bk}，空间划分情况如图 \ref{fig:gdram_split_bk} 所示。需特别指出的是，此场景聚焦于大规模数据处理。在此情形下，单个 MLU - Core 的 NRAM 空间已无法完整容纳一行数据，即单个 MLU - Core 负责的数据规模远超 NRAM 单次处理能力。基于此，需将部分中间结果暂存于 GDRAM，故而对 workspace 进行细化划分，形成 counts\_ddr、batch\_iter\_workspace 和 values\_batch\_iter\_workspace，具体划分如图 \ref{fig:workspace_split_bk.png} 所示。其中，counts\_ddr 主要用于存储各 MLU - Core 的局部前缀信息，以实现信息同步功能；batch\_iter\_workspace 主要存储每次循环执行 CountingSort 算法时的输入数据，即完成筛选后的输入数据；values\_batch\_iter\_workspace 亦承担相同功能。  
+
+关于 NRAM 空间，其涉及的主要变量及其功能阐释详见表 \ref{tab:nram_var_bk}，空间划分情况如图 \ref{fig:nram_split_bk} 所示。
+
 \begin{table}
     \caption{GDRAM空间变量说明表}
     \centering
@@ -608,23 +634,22 @@ values\_batch\_iter\_workspace同理。
     \label{tab:gdram_var_bk}
 \end{table}
 
-\begin{figure}[ht]
-    \centering
-    \includegraphics[scale = 0.45]{gdram_split_bk.png}
-    \caption{GDRAM空间拆分示意图}
-    \label{fig:gdram_split_bk}
-    % \note{注：图注的内容不宜放到图题中。}
-\end{figure}
+% \begin{figure}[ht]
+%     \centering
+%     \includegraphics[scale = 0.45]{gdram_split_bk.png}
+%     \caption{GDRAM空间拆分示意图}
+%     \label{fig:gdram_split_bk}
+%     % \note{注：图注的内容不宜放到图题中。}
+% \end{figure}
 
-\begin{figure}[ht]
-    \centering
-    \includegraphics[scale = 0.45]{workspace_split_bk.png}
-    \caption{Workspace空间拆分示意图}
-    \label{fig:workspace_split_bk}
-    % \note{注：图注的内容不宜放到图题中。}
-\end{figure}
+% \begin{figure}[ht]
+%     \centering
+%     \includegraphics[scale = 0.45]{workspace_split_bk.png}
+%     \caption{Workspace空间拆分示意图}
+%     \label{fig:workspace_split_bk}
+%     % \note{注：图注的内容不宜放到图题中。}
+% \end{figure}
 
-对于NRAM空间而言，主要涉及的变量及其作用如表~\ref{tab:nram_var_bk}所示，其空间划分如图~\ref{fig:nram_split_bk}所示。
 \begin{table}
     \caption{NRAM空间变量说明表}
     \centering
@@ -646,14 +671,44 @@ values\_batch\_iter\_workspace同理。
     \end{tabular}
     \label{tab:nram_var_bk}
 \end{table}
-
-\begin{figure}[ht]
+\begin{figure}[htbp]
     \centering
-    \includegraphics[scale = 0.45]{nram_split_bk.png}
-    \caption{数据拆分示意图}
+    \begin{subfigure}[b]{\textwidth}
+        \centering
+        \includegraphics[scale = 0.55]{gdram_split_bk.png}
+        \caption{GDRAM空间拆分示意图}
+        \label{fig:gdram_split_bk}
+    \end{subfigure}
+    
+    \vspace{1em} % 增加上下间距
+
+    \begin{subfigure}[b]{\textwidth}
+        \centering
+        \includegraphics[scale = 0.56]{workspace_split_bk.png}
+    \caption{Workspace空间拆分示意图}
+    \label{fig:workspace_split_bk}
+    \end{subfigure}
+    
+    \begin{subfigure}[c]{\textwidth}
+        \centering
+        \includegraphics[scale = 0.55]{nram_split_bk.png}
+    \caption{NRAM空间拆分示意图}
     \label{fig:nram_split_bk}
-    % \note{注：图注的内容不宜放到图题中。}
+    \end{subfigure}
+    \caption{大k场景下RadixSelect的空间划分示意图}
+    \label{fig:images}
 \end{figure}
+
+
+
+
+% \begin{figure}[ht]
+%     \centering
+%     \includegraphics[scale = 0.45]{nram_split_bk.png}
+%     \caption{数据拆分示意图}
+%     \label{fig:nram_split_bk}
+%     % \note{注：图注的内容不宜放到图题中。}
+% \end{figure}
 
 
 %Todo
@@ -803,7 +858,7 @@ values\_batch\_iter\_workspace同理。
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[scale = 0.7]{data0_int32.png}
+    \includegraphics[scale = 0.75]{data0_int32.png}
     \caption{整型输入数据示意图}
     \label{fig:data0_int32}
     % \note{注：图注的内容不宜放到图题中。}
@@ -814,7 +869,7 @@ values\_batch\_iter\_workspace同理。
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[scale = 0.7]{data1_int32.png}
+    \includegraphics[scale = 0.75]{data1_int32.png}
     \caption{整型数据未处理排序结果示意图}
     \label{fig:data1_int32}
     % \note{注：图注的内容不宜放到图题中。}
@@ -843,7 +898,7 @@ b.对数据进行预处理，对符号位进行变换，在最后再将变换后
 即逐个比特位取反， 通过上述处理之后，数据将会正常显示。如图~\ref{fig:res_int32}所示。
 \begin{figure}[ht]
     \centering
-    \includegraphics[scale = 0.7]{res_int32.png}
+    \includegraphics[scale = 0.75]{res_int32.png}
     \caption{整型正确输出示意图}
     \label{fig:res_int32}
     % \note{注：图注的内容不宜放到图题中。}
@@ -879,7 +934,7 @@ b.对数据进行预处理，对符号位进行变换，在最后再将变换后
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[scale = 0.7]{data0_float32.png}
+    \includegraphics[scale = 0.75]{data0_float32.png}
     \caption{浮点型输入数据示意图}
     \label{fig:data0}
     % \note{注：图注的内容不宜放到图题中。}
@@ -890,7 +945,7 @@ b.对数据进行预处理，对符号位进行变换，在最后再将变换后
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[scale = 0.7]{data1_float32.png}
+    \includegraphics[scale = 0.75]{data1_float32.png}
     \caption{浮点型未处理排序结果示意图}
     \label{fig:data1}
     % \note{注：图注的内容不宜放到图题中。}
@@ -925,8 +980,8 @@ b.对数据进行预处理，对符号位进行变换，在最后再将变换后
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[scale = 0.7]{res_float32.png}
-    \caption{整型正确输出示意图}
+    \includegraphics[scale = 0.75]{res_float32.png}
+    \caption{浮点型正确输出示意图}
     \label{fig:res_float32}
     % \note{注：图注的内容不宜放到图题中。}
 \end{figure}

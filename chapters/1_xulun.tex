@@ -1,9 +1,10 @@
 \chapter{绪论}
 \section{研究背景及意义}
-近年来，随着深度学习和人工智能技术的快速发展，全球范围内对数据计算能力的需求急剧上升\cite{devlin2019bert}\cite{vaswani2017attention}。
-同时，在深度学习\cite{vaswani2017attention}、推荐系统\cite{han2022vision}、搜索引擎\cite{wangningmapreduce}和目标检测\cite{krizhevsky2012imagenet}等应用场景中，
-Top-k 查询算法作为核心数据筛选工具，被广泛应用于从大规模数据集中选取最优数据\cite{韩希先2010tkep}\cite{JSJA202405009}。
 Top-k 查询的主要任务是从海量数据中快速筛选出具有最高优先级或得分的前 k 个数据元素，为后续的模型处理或决策提供支持。
+近年来，随着深度学习和人工智能技术的快速发展，全球范围内对数据计算能力的需求急剧上升\cite{devlin2019bert}\cite{vaswani2017attention}。
+同时，在深度学习\cite{vaswani2017attention}、推荐系统\cite{han2022vision}、搜索引擎\cite{wangningmapreduce}和目标检
+测\cite{krizhevsky2012imagenet}等应用场景中，
+Top-k 查询算法作为核心数据筛选工具，被广泛应用于从大规模数据集中选取最优数据\cite{韩希先2010tkep}\cite{JSJA202405009}。
 尤其是在深度学习模型中，Top-k 查询被频繁用于多个关键操作，例如筛选权重较大的神经元、从候选区域中选出优先级最高的目标框，以及在自然语言处理任务中选取概率最高的词汇或短语。
 它直接影响模型的运行效率和预测性能，是深度学习系统中不可或缺的重要组成部分。\cite{zeng2024turn}
 然而，随着数据规模的指数增长和模型复杂度的不断提升，传统基于 CPU 和 GPU 的 Top-k 查询算法在计算性能、能耗比和响应时间等方面的局限性逐渐显现，
